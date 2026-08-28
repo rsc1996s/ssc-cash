@@ -1,0 +1,154 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function role() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function isOwner() {
+      return isSignedIn() && role() == 'owner';
+    }
+
+    function isApprovedUser() {
+      return isSignedIn() && (role() == 'owner' || role() == 'staff');
+    }
+
+    // ---------- users ----------
+    match /users/{userId} {
+      // สมัครสมาชิกได้เฉพาะสร้างเอกสารของตัวเอง และต้องเริ่มที่สถานะ pending เท่านั้น
+      allow create: if isSignedIn()
+        && request.auth.uid == userId
+        && request.resource.data.role == 'pending';
+
+      // อ่านได้เฉพาะเจ้าของบัญชีเอง หรือ owner (เพื่อจัดการสิทธิ์/แสดงชื่อผู้บันทึก)
+      allow read: if isSignedIn() && (request.auth.uid == userId || isOwner());
+
+      // เปลี่ยน role ได้เฉพาะ owner เท่านั้น ห้ามผู้ใช้ตั้ง role ให้ตัวเอง
+      allow update: if isOwner();
+
+      allow delete: if false;
+    }
+
+    // ---------- transactions ----------
+    match /transactions/{txId} {
+
+      function coreFieldsUnchanged() {
+        return request.resource.data.amount == resource.data.amount &&
+          request.resource.data.withdrawnAmount == resource.data.withdrawnAmount &&
+          request.resource.data.itemDescription == resource.data.itemDescription &&
+          request.resource.data.changeAmount == resource.data.changeAmount &&
+          request.resource.data.paymentMethod == resource.data.paymentMethod &&
+          request.resource.data.note == resource.data.note;
+      }
+
+      function editHistoryGrewWithReason() {
+        let newLen = request.resource.data.editHistory.size();
+        return newLen == resource.data.editHistory.size() + 1 &&
+          request.resource.data.editHistory[newLen - 1].editedBy == request.auth.uid &&
+          request.resource.data.editHistory[newLen - 1].reason is string &&
+          request.resource.data.editHistory[newLen - 1].reason.size() > 0;
+      }
+
+      // สร้างรายการใหม่ได้เฉพาะผู้ใช้ที่ได้รับอนุมัติ ต้องระบุตัวเองเป็นผู้สร้าง
+      // เริ่มที่สถานะ pending เสมอ และห้ามใส่ประวัติแก้ไขมาตั้งแต่แรก
+      allow create: if isApprovedUser()
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.editHistory.size() == 0
+        && request.resource.data.fundId is string;
+
+      // อ่านได้เฉพาะเจ้าของรายการ หรือ owner (เห็นทุกรายการเพื่อกำกับดูแล)
+      allow read: if isApprovedUser() &&
+        (isOwner() || resource.data.createdBy == request.auth.uid);
+
+      allow update: if isSignedIn() && (
+        // 1) owner ตรวจสอบอนุมัติ/ตีกลับ/ยกเลิก — แก้ได้เฉพาะสถานะและหมายเหตุตรวจสอบ ห้ามแตะตัวเลข/รายละเอียด
+        //    อนุมัติสำเร็จ (เบิกได้จริง) ได้ก็ต่อเมื่อมีลายเซ็นออนไลน์แนบมาด้วยเท่านั้น
+        (isOwner() && coreFieldsUnchanged() &&
+          request.resource.data.editHistory.size() == resource.data.editHistory.size() &&
+          request.resource.data.reviewedBy == request.auth.uid &&
+          request.resource.data.fundId == resource.data.fundId &&
+          (request.resource.data.status != 'approved' || request.resource.data.approvalSignatureURL is string))
+        ||
+        // 2) owner แก้ไขข้อมูลย้อนหลัง — ต้องมีเหตุผลและถูกบันทึกลง audit trail เสมอ
+        (isOwner() &&
+          request.resource.data.status == resource.data.status &&
+          request.resource.data.createdBy == resource.data.createdBy &&
+          request.resource.data.createdAt == resource.data.createdAt &&
+          request.resource.data.receiptPhotoURL == resource.data.receiptPhotoURL &&
+          request.resource.data.fundId == resource.data.fundId &&
+          editHistoryGrewWithReason())
+        ||
+        // 3) พนักงานแก้ไขรายการของตัวเองได้เฉพาะตอนยังไม่ถูกตรวจสอบ (pending)
+        //    ห้ามแตะสถานะ วันที่สร้าง หรือรูปหลักฐาน ต้องมีเหตุผลทุกครั้ง
+        (isApprovedUser() && role() == 'staff' &&
+          resource.data.createdBy == request.auth.uid &&
+          resource.data.status == 'pending' &&
+          request.resource.data.status == 'pending' &&
+          request.resource.data.createdBy == resource.data.createdBy &&
+          request.resource.data.createdAt == resource.data.createdAt &&
+          request.resource.data.receiptPhotoURL == resource.data.receiptPhotoURL &&
+          request.resource.data.changePhotoURL == resource.data.changePhotoURL &&
+          request.resource.data.fundId == resource.data.fundId &&
+          editHistoryGrewWithReason())
+      );
+
+      // ห้ามลบรายการถาวรโดยเด็ดขาด แม้แต่ owner — ใช้สถานะ "voided" แทนเพื่อรักษาประวัติทั้งหมด
+      allow delete: if false;
+    }
+
+    // ---------- funds (เงินหมุนเวียนแต่ละฝั่ง เช่น หน้าร้าน / ออกส่งสินค้าและเบี้ยเลี้ยง) ----------
+    match /funds/{fundId} {
+      // ทุกคนที่ผ่านอนุมัติอ่านได้ (ต้องเลือกฝั่งตอนบันทึกรายการ) แต่สร้าง/แก้ได้เฉพาะ owner
+      allow read: if isApprovedUser();
+      allow create: if isOwner() && request.resource.data.openingBalance is number;
+      allow update: if isOwner();
+      allow delete: if false;
+    }
+
+    // ---------- fundTopups (การคีย์เงินรับเข้ากองทุนหมุนเวียน) ----------
+    match /fundTopups/{topupId} {
+      allow read: if isApprovedUser();
+      // เติมเงินเข้ากองทุนได้เฉพาะ owner เท่านั้น และต้องระบุตัวเองเป็นผู้บันทึก
+      allow create: if isOwner()
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.amount is number
+        && request.resource.data.amount > 0;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // ---------- โมดูลโอนจ่ายผ่านธนาคาร (เฉพาะแอดมิน/เจ้าของ ไม่เกี่ยวกับพนักงาน) ----------
+
+    // เลขที่เอกสารรันอัตโนมัติ (ใบเบิก / ใบโอนจ่าย)
+    match /counters/{counterId} {
+      allow read, write: if isOwner();
+    }
+
+    // บัญชีธนาคารโปรด ทั้งฝั่งบัญชีของเรา (source) และบัญชีผู้รับโอน (payee)
+    match /bankAccounts/{accountId} {
+      allow read, write: if isOwner();
+    }
+
+    // หมวดหมู่โปรดสำหรับรายการในใบเบิก
+    match /transferCategories/{categoryId} {
+      allow read, write: if isOwner();
+    }
+
+    // ใบเบิกเงินโอน (เงินเข้าบัญชี A ก่อนนำไปจ่ายออก)
+    match /withdrawalRequests/{requestId} {
+      allow read, write: if isOwner();
+    }
+
+    // ใบโอนจ่าย (เงินออกจากบัญชี A ไปยังบัญชี B ตัดยอดกับใบเบิก)
+    match /transferPayments/{paymentId} {
+      allow read, write: if isOwner();
+    }
+  }
+}

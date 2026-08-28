@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: "Inter", system-ui, sans-serif;
+}
+
+.font-nums {
+  font-family: "IBM Plex Mono", monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Rubber-stamp status badge — the app's signature visual element */
+.stamp {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.65rem;
+  border-radius: 4px;
+  border: 2px solid currentColor;
+  font-family: "Roboto Slab", serif;
+  font-weight: 700;
+  font-size: 0.68rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  transform: rotate(-3deg);
+}
+
+/* Perforated top edge on receipt-style cards */
+.receipt-edge {
+  position: relative;
+}
+.receipt-edge::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background-image: radial-gradient(circle, #D8D6CC 1.1px, transparent 1.2px);
+  background-size: 10px 2px;
+  background-repeat: repeat-x;
+}
+
+/* Focus visibility */
+:focus-visible {
+  outline: 2px solid #1F6F5C;
+  outline-offset: 2px;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: white !important;
+  }
+  .print-sheet {
+    box-shadow: none !important;
+    border: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
