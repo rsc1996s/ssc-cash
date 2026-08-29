@@ -3,11 +3,19 @@ import { Link, useNavigate } from "react-router-dom";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "../firebase";
+import {
+  usernameToEmail,
+  pinToPassword,
+  normalizeUsername,
+  USERNAME_PATTERN,
+  PIN_PATTERN,
+} from "../lib/auth";
 
 export default function Register() {
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [username, setUsername] = useState("");
+  const [pin, setPin] = useState("");
+  const [pinConfirm, setPinConfirm] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const navigate = useNavigate();
@@ -15,22 +23,44 @@ export default function Register() {
   async function handleSubmit(e) {
     e.preventDefault();
     setError("");
+
+    if (!name.trim()) {
+      setError("กรุณากรอกชื่อ-นามสกุล");
+      return;
+    }
+    if (!USERNAME_PATTERN.test(username.trim())) {
+      setError("ชื่อผู้ใช้ต้องมี 3-20 ตัวอักษร (a-z, 0-9, . _ - เท่านั้น ห้ามเว้นวรรค)");
+      return;
+    }
+    if (!PIN_PATTERN.test(pin.trim())) {
+      setError("PIN ต้องเป็นตัวเลข 4-6 หลัก");
+      return;
+    }
+    if (pin !== pinConfirm) {
+      setError("PIN ทั้งสองช่องไม่ตรงกัน");
+      return;
+    }
+
     setBusy(true);
     try {
-      const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
+      const cred = await createUserWithEmailAndPassword(
+        auth,
+        usernameToEmail(username),
+        pinToPassword(pin)
+      );
       // สร้างโปรไฟล์ในสถานะ "pending" — ต้องรอเจ้าของร้านอนุมัติสิทธิ์ก่อนใช้งานได้
       await setDoc(doc(db, "users", cred.user.uid), {
         name: name.trim(),
-        email: email.trim(),
+        username: normalizeUsername(username),
         role: "pending",
         createdAt: serverTimestamp(),
       });
       navigate("/pending");
     } catch (err) {
       if (err.code === "auth/email-already-in-use") {
-        setError("อีเมลนี้ถูกใช้งานแล้ว");
+        setError("ชื่อผู้ใช้นี้ถูกใช้งานแล้ว ลองชื่ออื่น");
       } else if (err.code === "auth/weak-password") {
-        setError("รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร");
+        setError("PIN สั้นเกินไป กรุณาใช้อย่างน้อย 4 หลัก");
       } else {
         setError("สมัครไม่สำเร็จ ลองใหม่อีกครั้ง");
       }
@@ -57,24 +87,42 @@ export default function Register() {
             />
           </div>
           <div>
-            <label className="text-sm text-inkSoft block mb-1">อีเมล</label>
+            <label className="text-sm text-inkSoft block mb-1">ชื่อผู้ใช้ (ใช้ล็อกอิน)</label>
             <input
-              type="email"
+              type="text"
+              autoCapitalize="none"
+              autoCorrect="off"
               required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="เช่น somchai01"
               className="w-full border border-paperLine rounded px-3 py-2 focus:border-teal"
             />
           </div>
           <div>
-            <label className="text-sm text-inkSoft block mb-1">รหัสผ่าน (อย่างน้อย 6 ตัวอักษร)</label>
+            <label className="text-sm text-inkSoft block mb-1">ตั้ง PIN (4-6 หลัก)</label>
             <input
               type="password"
+              inputMode="numeric"
+              pattern="\d*"
+              maxLength={6}
               required
-              minLength={6}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full border border-paperLine rounded px-3 py-2 focus:border-teal"
+              value={pin}
+              onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
+              className="w-full border border-paperLine rounded px-3 py-2 tracking-[0.3em] text-center font-nums focus:border-teal"
+            />
+          </div>
+          <div>
+            <label className="text-sm text-inkSoft block mb-1">ยืนยัน PIN อีกครั้ง</label>
+            <input
+              type="password"
+              inputMode="numeric"
+              pattern="\d*"
+              maxLength={6}
+              required
+              value={pinConfirm}
+              onChange={(e) => setPinConfirm(e.target.value.replace(/\D/g, ""))}
+              className="w-full border border-paperLine rounded px-3 py-2 tracking-[0.3em] text-center font-nums focus:border-teal"
             />
           </div>
           {error && <p className="text-sm text-rust">{error}</p>}

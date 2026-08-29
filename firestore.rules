@@ -19,6 +19,12 @@ service cloud.firestore {
       return isSignedIn() && (role() == 'owner' || role() == 'staff');
     }
 
+    // ผู้อ่าน (guest) รวมกับ owner/staff อ่านข้อมูลฝั่งเงินสด/กองทุน/รายงานได้ แต่สร้าง/แก้ไขไม่ได้
+    // และมองไม่เห็นโมดูลโอนจ่ายธนาคารเลย (โมดูลนั้นยังคงเช็คด้วย isOwner() เท่านั้น)
+    function canReadCash() {
+      return isSignedIn() && (role() == 'owner' || role() == 'staff' || role() == 'guest');
+    }
+
     // ---------- users ----------
     match /users/{userId} {
       // สมัครสมาชิกได้เฉพาะสร้างเอกสารของตัวเอง และต้องเริ่มที่สถานะ pending เท่านั้น
@@ -63,9 +69,10 @@ service cloud.firestore {
         && request.resource.data.editHistory.size() == 0
         && request.resource.data.fundId is string;
 
-      // อ่านได้เฉพาะเจ้าของรายการ หรือ owner (เห็นทุกรายการเพื่อกำกับดูแล)
-      allow read: if isApprovedUser() &&
-        (isOwner() || resource.data.createdBy == request.auth.uid);
+      // อ่านได้เฉพาะเจ้าของรายการ, owner (เห็นทุกรายการเพื่อกำกับดูแล), หรือใครก็ตามที่อ่านข้อมูลฝั่งเงินสดได้
+      // และรายการนั้นอนุมัติแล้ว (โปร่งใสให้ staff/guest เห็นภาพรวมเงินหมุนเวียนได้ แต่ไม่เห็นรายการที่ยังไม่ผ่านตรวจสอบของคนอื่น)
+      allow read: if canReadCash() &&
+        (isOwner() || resource.data.createdBy == request.auth.uid || resource.data.status == 'approved');
 
       allow update: if isSignedIn() && (
         // 1) owner ตรวจสอบอนุมัติ/ตีกลับ/ยกเลิก — แก้ได้เฉพาะสถานะและหมายเหตุตรวจสอบ ห้ามแตะตัวเลข/รายละเอียด
@@ -105,8 +112,8 @@ service cloud.firestore {
 
     // ---------- funds (เงินหมุนเวียนแต่ละฝั่ง เช่น หน้าร้าน / ออกส่งสินค้าและเบี้ยเลี้ยง) ----------
     match /funds/{fundId} {
-      // ทุกคนที่ผ่านอนุมัติอ่านได้ (ต้องเลือกฝั่งตอนบันทึกรายการ) แต่สร้าง/แก้ได้เฉพาะ owner
-      allow read: if isApprovedUser();
+      // ทุกคนที่อ่านข้อมูลฝั่งเงินสดได้ (staff/owner/guest) อ่านได้ แต่สร้าง/แก้ได้เฉพาะ owner
+      allow read: if canReadCash();
       allow create: if isOwner() && request.resource.data.openingBalance is number;
       allow update: if isOwner();
       allow delete: if false;
@@ -114,7 +121,7 @@ service cloud.firestore {
 
     // ---------- fundTopups (การคีย์เงินรับเข้ากองทุนหมุนเวียน) ----------
     match /fundTopups/{topupId} {
-      allow read: if isApprovedUser();
+      allow read: if canReadCash();
       // เติมเงินเข้ากองทุนได้เฉพาะ owner เท่านั้น และต้องระบุตัวเองเป็นผู้บันทึก
       allow create: if isOwner()
         && request.resource.data.createdBy == request.auth.uid

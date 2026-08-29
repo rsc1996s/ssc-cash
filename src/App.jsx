@@ -4,7 +4,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import PendingApproval from "./pages/PendingApproval";
-import StaffDashboard from "./pages/StaffDashboard";
+import Home from "./pages/Home";
 import NewTransaction from "./pages/NewTransaction";
 import TransactionDetail from "./pages/TransactionDetail";
 import OwnerDashboard from "./pages/OwnerDashboard";
@@ -31,14 +31,14 @@ export default function App() {
             path="/"
             element={
               <ProtectedRoute>
-                <StaffDashboard />
+                <Home />
               </ProtectedRoute>
             }
           />
           <Route
             path="/new"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute requireRole={["owner", "staff"]}>
                 <NewTransaction />
               </ProtectedRoute>
             }
@@ -78,7 +78,7 @@ export default function App() {
           <Route
             path="/reports"
             element={
-              <ProtectedRoute requireRole="owner">
+              <ProtectedRoute requireRole={["owner", "guest"]}>
                 <Reports />
               </ProtectedRoute>
             }

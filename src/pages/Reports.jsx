@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { collection, onSnapshot } from "firebase/firestore";
+import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase";
 import Layout from "../components/Layout";
 import { formatBaht, formatDateTime, TYPE_LABEL } from "../lib/format";
@@ -36,7 +36,7 @@ export default function Reports() {
     const unsub2 = onSnapshot(collection(db, "fundTopups"), (snap) =>
       setTopups(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
     );
-    const unsub3 = onSnapshot(collection(db, "transactions"), (snap) =>
+    const unsub3 = onSnapshot(query(collection(db, "transactions"), where("status", "==", "approved")), (snap) =>
       setTransactions(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
     );
     return () => {

@@ -38,10 +38,11 @@ export function AuthProvider({ children }) {
 
   const value = {
     user: firebaseUser,
-    profile, // null until loaded; profile.role: 'pending' | 'staff' | 'owner'
+    profile, // null until loaded; profile.role: 'pending' | 'staff' | 'owner' | 'guest'
     loading,
     isOwner: profile?.role === "owner",
     isStaff: profile?.role === "staff",
+    isGuest: profile?.role === "guest",
     isPending: profile?.role === "pending",
   };
 

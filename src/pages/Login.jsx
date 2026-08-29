@@ -2,10 +2,11 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from "../firebase";
+import { usernameToEmail, pinToPassword, USERNAME_PATTERN, PIN_PATTERN } from "../lib/auth";
 
 export default function Login() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [username, setUsername] = useState("");
+  const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const navigate = useNavigate();
@@ -13,12 +14,22 @@ export default function Login() {
   async function handleSubmit(e) {
     e.preventDefault();
     setError("");
+
+    if (!USERNAME_PATTERN.test(username.trim())) {
+      setError("ชื่อผู้ใช้ต้องมี 3-20 ตัวอักษร (a-z, 0-9, . _ - เท่านั้น)");
+      return;
+    }
+    if (!PIN_PATTERN.test(pin.trim())) {
+      setError("PIN ต้องเป็นตัวเลข 4-6 หลัก");
+      return;
+    }
+
     setBusy(true);
     try {
-      await signInWithEmailAndPassword(auth, email.trim(), password);
+      await signInWithEmailAndPassword(auth, usernameToEmail(username), pinToPassword(pin));
       navigate("/");
     } catch (err) {
-      setError("อีเมลหรือรหัสผ่านไม่ถูกต้อง");
+      setError("ชื่อผู้ใช้หรือ PIN ไม่ถูกต้อง");
     } finally {
       setBusy(false);
     }
@@ -31,23 +42,28 @@ export default function Login() {
         <p className="text-sm text-inkSoft mb-5">บันทึกรายรับ-รายจ่ายหน้าร้าน</p>
         <form onSubmit={handleSubmit} className="space-y-3">
           <div>
-            <label className="text-sm text-inkSoft block mb-1">อีเมล</label>
+            <label className="text-sm text-inkSoft block mb-1">ชื่อผู้ใช้</label>
             <input
-              type="email"
+              type="text"
+              autoCapitalize="none"
+              autoCorrect="off"
               required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
               className="w-full border border-paperLine rounded px-3 py-2 focus:border-teal"
             />
           </div>
           <div>
-            <label className="text-sm text-inkSoft block mb-1">รหัสผ่าน</label>
+            <label className="text-sm text-inkSoft block mb-1">PIN (4-6 หลัก)</label>
             <input
               type="password"
+              inputMode="numeric"
+              pattern="\d*"
+              maxLength={6}
               required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full border border-paperLine rounded px-3 py-2 focus:border-teal"
+              value={pin}
+              onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
+              className="w-full border border-paperLine rounded px-3 py-2 tracking-[0.3em] text-center font-nums focus:border-teal"
             />
           </div>
           {error && <p className="text-sm text-rust">{error}</p>}

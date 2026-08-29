@@ -4,7 +4,7 @@ import { auth } from "../firebase";
 import { useAuth } from "../context/AuthContext";
 
 export default function Layout({ children }) {
-  const { profile, isOwner } = useAuth();
+  const { profile, isOwner, isGuest } = useAuth();
   const navigate = useNavigate();
 
   async function handleLogout() {
@@ -21,11 +21,18 @@ export default function Layout({ children }) {
           </Link>
           <nav className="flex items-center gap-4 text-sm flex-wrap">
             <Link to="/" className="hover:text-teal">
-              รายการของฉัน
+              {isGuest ? "รายการทั้งหมด" : "รายการของฉัน"}
             </Link>
-            <Link to="/new" className="hover:text-teal">
-              + บันทึกใหม่
-            </Link>
+            {!isGuest && (
+              <Link to="/new" className="hover:text-teal">
+                + บันทึกใหม่
+              </Link>
+            )}
+            {isGuest && (
+              <Link to="/reports" className="hover:text-teal">
+                รายงาน
+              </Link>
+            )}
             {isOwner && (
               <>
                 <Link to="/owner" className="hover:text-teal">

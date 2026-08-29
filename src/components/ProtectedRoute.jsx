@@ -18,8 +18,11 @@ export default function ProtectedRoute({ children, requireRole }) {
     return <Navigate to="/pending" replace />;
   }
 
-  if (requireRole && profile.role !== requireRole) {
-    return <Navigate to="/" replace />;
+  if (requireRole) {
+    const allowed = Array.isArray(requireRole) ? requireRole : [requireRole];
+    if (!allowed.includes(profile.role)) {
+      return <Navigate to="/" replace />;
+    }
   }
 
   return children;
