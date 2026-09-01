@@ -54,6 +54,9 @@ export default function Layout({ children }) {
             )}
             <span className="text-inkSoft">|</span>
             <span className="text-xs text-paper/70">{profile?.name}</span>
+            <Link to="/change-pin" className="text-xs hover:text-teal">
+              เปลี่ยน PIN
+            </Link>
             <button
               onClick={handleLogout}
               className="text-xs border border-paper/40 rounded px-2 py-1 hover:bg-paper/10"

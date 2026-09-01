@@ -157,5 +157,18 @@ service cloud.firestore {
     match /transferPayments/{paymentId} {
       allow read, write: if isOwner();
     }
+    // ---------- pinDirectory (ผูก PIN -> บัญชี เพื่อให้หน้า Login ค้นหาอีเมลจาก PIN ได้ก่อนล็อกอิน) ----------
+    match /pinDirectory/{pin} {
+      // อ่านแบบระบุ PIN ตรงๆ ได้แม้ยังไม่ล็อกอิน (จำเป็นสำหรับหน้า Login) แต่ห้าม list ทั้ง collection
+      // เพื่อไม่ให้ใครดึงรายชื่อ PIN ที่ถูกใช้ไปแล้วทั้งหมดออกไปได้
+      allow get: if true;
+      allow list: if false;
+      // สร้างได้เฉพาะการผูก PIN เข้ากับบัญชีของตัวเอง (ตอนสมัคร หรือตอนเปลี่ยน PIN)
+      // ถ้า PIN นั้นมีเจ้าของอยู่แล้ว คำขอนี้จะถูกตีความเป็น "update" ซึ่งไม่มี rule อนุญาต จึงถูกปฏิเสธอัตโนมัติ (กัน PIN ซ้ำ)
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      // ลบได้เฉพาะเจ้าของ PIN นั้นเอง (ใช้ตอนเปลี่ยน PIN ใหม่ ต้องลบอันเก่าทิ้ง)
+      allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+      allow update: if false;
+    }
   }
 }

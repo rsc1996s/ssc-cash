@@ -18,6 +18,7 @@ import WithdrawalRequestForm from "./pages/WithdrawalRequestForm";
 import WithdrawalRequestPrint from "./pages/WithdrawalRequestPrint";
 import TransferPaymentForm from "./pages/TransferPaymentForm";
 import TransferPaymentPrint from "./pages/TransferPaymentPrint";
+import ChangePin from "./pages/ChangePin";
 
 export default function App() {
   return (
@@ -152,6 +153,14 @@ export default function App() {
             element={
               <ProtectedRoute requireRole="owner">
                 <TransferPaymentPrint />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/change-pin"
+            element={
+              <ProtectedRoute>
+                <ChangePin />
               </ProtectedRoute>
             }
           />

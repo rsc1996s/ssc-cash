@@ -1,69 +1,75 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { createUserWithEmailAndPassword } from "firebase/auth";
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "../firebase";
-import {
-  usernameToEmail,
-  pinToPassword,
-  normalizeUsername,
-  USERNAME_PATTERN,
-  PIN_PATTERN,
-} from "../lib/auth";
+import { pinToPassword, randomPinEmail, PIN_PATTERN } from "../lib/auth";
+import PinPad from "../components/PinPad";
 
 export default function Register() {
+  const [step, setStep] = useState(1); // 1: ชื่อ, 2: ตั้ง PIN, 3: ยืนยัน PIN
   const [name, setName] = useState("");
-  const [username, setUsername] = useState("");
   const [pin, setPin] = useState("");
   const [pinConfirm, setPinConfirm] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const navigate = useNavigate();
 
-  async function handleSubmit(e) {
+  function goToPinStep(e) {
     e.preventDefault();
-    setError("");
-
     if (!name.trim()) {
       setError("กรุณากรอกชื่อ-นามสกุล");
       return;
     }
-    if (!USERNAME_PATTERN.test(username.trim())) {
-      setError("ชื่อผู้ใช้ต้องมี 3-20 ตัวอักษร (a-z, 0-9, . _ - เท่านั้น ห้ามเว้นวรรค)");
-      return;
-    }
-    if (!PIN_PATTERN.test(pin.trim())) {
+    setError("");
+    setStep(2);
+  }
+
+  function confirmFirstPin() {
+    if (!PIN_PATTERN.test(pin)) {
       setError("PIN ต้องเป็นตัวเลข 4-6 หลัก");
       return;
     }
-    if (pin !== pinConfirm) {
-      setError("PIN ทั้งสองช่องไม่ตรงกัน");
+    setError("");
+    setStep(3);
+  }
+
+  async function finish() {
+    if (pinConfirm !== pin) {
+      setError("PIN ยืนยันไม่ตรงกับที่ตั้งไว้ ลองใหม่อีกครั้ง");
+      setPinConfirm("");
       return;
     }
-
+    setError("");
     setBusy(true);
     try {
-      const cred = await createUserWithEmailAndPassword(
-        auth,
-        usernameToEmail(username),
-        pinToPassword(pin)
-      );
+      const existing = await getDoc(doc(db, "pinDirectory", pin));
+      if (existing.exists()) {
+        setError("PIN นี้ถูกใช้งานแล้ว กรุณาเลือก PIN อื่น");
+        setPin("");
+        setPinConfirm("");
+        setStep(2);
+        setBusy(false);
+        return;
+      }
+
+      const email = randomPinEmail();
+      const cred = await createUserWithEmailAndPassword(auth, email, pinToPassword(pin));
+
       // สร้างโปรไฟล์ในสถานะ "pending" — ต้องรอเจ้าของร้านอนุมัติสิทธิ์ก่อนใช้งานได้
       await setDoc(doc(db, "users", cred.user.uid), {
         name: name.trim(),
-        username: normalizeUsername(username),
+        pin,
         role: "pending",
         createdAt: serverTimestamp(),
       });
+      // ผูก PIN นี้กับบัญชี เพื่อให้หน้า Login ค้นหาเจอตอนพิมพ์ PIN
+      await setDoc(doc(db, "pinDirectory", pin), { uid: cred.user.uid, email });
+
       navigate("/pending");
     } catch (err) {
-      if (err.code === "auth/email-already-in-use") {
-        setError("ชื่อผู้ใช้นี้ถูกใช้งานแล้ว ลองชื่ออื่น");
-      } else if (err.code === "auth/weak-password") {
-        setError("PIN สั้นเกินไป กรุณาใช้อย่างน้อย 4 หลัก");
-      } else {
-        setError("สมัครไม่สำเร็จ ลองใหม่อีกครั้ง");
-      }
+      console.error(err);
+      setError("สมัครไม่สำเร็จ ลองใหม่อีกครั้ง");
     } finally {
       setBusy(false);
     }
@@ -71,70 +77,93 @@ export default function Register() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-paper px-4">
-      <div className="w-full max-w-sm bg-white border border-paperLine rounded-lg p-6 receipt-edge">
-        <h1 className="font-slab text-xl mb-1">สมัครใช้งาน</h1>
+      <div className="w-full max-w-sm bg-white border border-paperLine rounded-lg p-6 receipt-edge text-center">
+        <h1 className="font-slab text-xl mb-1">ลงทะเบียนพนักงานใหม่</h1>
         <p className="text-sm text-inkSoft mb-5">
           บัญชีใหม่จะอยู่ในสถานะ "รออนุมัติ" จนกว่าเจ้าของร้านจะกำหนดสิทธิ์ให้
         </p>
-        <form onSubmit={handleSubmit} className="space-y-3">
+
+        {step === 1 && (
+          <form onSubmit={goToPinStep} className="space-y-3 text-left">
+            <div>
+              <label className="text-sm text-inkSoft block mb-1">ชื่อ-นามสกุล</label>
+              <input
+                autoFocus
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full border border-paperLine rounded px-3 py-2 focus:border-teal"
+              />
+            </div>
+            {error && <p className="text-sm text-rust">{error}</p>}
+            <button
+              type="submit"
+              className="w-full bg-teal text-white rounded py-2.5 font-medium hover:bg-teal-dark"
+            >
+              ถัดไป
+            </button>
+          </form>
+        )}
+
+        {step === 2 && (
           <div>
-            <label className="text-sm text-inkSoft block mb-1">ชื่อ-นามสกุล</label>
-            <input
-              required
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full border border-paperLine rounded px-3 py-2 focus:border-teal"
-            />
+            <p className="text-sm text-inkSoft mb-3">ตั้ง PIN สำหรับเข้าสู่ระบบ (4-6 หลัก)</p>
+            <PinPad value={pin} onChange={setPin} maxLength={6} />
+            {error && <p className="text-sm text-rust mt-3">{error}</p>}
+            <div className="flex gap-2 mt-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setStep(1);
+                  setError("");
+                }}
+                className="flex-1 border border-paperLine rounded py-2.5 text-sm"
+              >
+                ย้อนกลับ
+              </button>
+              <button
+                type="button"
+                onClick={confirmFirstPin}
+                disabled={pin.length < 4}
+                className="flex-1 bg-teal text-white rounded py-2.5 font-medium hover:bg-teal-dark disabled:opacity-40"
+              >
+                ถัดไป
+              </button>
+            </div>
           </div>
+        )}
+
+        {step === 3 && (
           <div>
-            <label className="text-sm text-inkSoft block mb-1">ชื่อผู้ใช้ (ใช้ล็อกอิน)</label>
-            <input
-              type="text"
-              autoCapitalize="none"
-              autoCorrect="off"
-              required
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="เช่น somchai01"
-              className="w-full border border-paperLine rounded px-3 py-2 focus:border-teal"
-            />
+            <p className="text-sm text-inkSoft mb-3">พิมพ์ PIN อีกครั้งเพื่อยืนยัน</p>
+            <PinPad value={pinConfirm} onChange={setPinConfirm} maxLength={pin.length} disabled={busy} />
+            {error && <p className="text-sm text-rust mt-3">{error}</p>}
+            <div className="flex gap-2 mt-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setStep(2);
+                  setPinConfirm("");
+                  setError("");
+                }}
+                disabled={busy}
+                className="flex-1 border border-paperLine rounded py-2.5 text-sm"
+              >
+                ย้อนกลับ
+              </button>
+              <button
+                type="button"
+                onClick={finish}
+                disabled={busy || pinConfirm.length < pin.length}
+                className="flex-1 bg-teal text-white rounded py-2.5 font-medium hover:bg-teal-dark disabled:opacity-40"
+              >
+                {busy ? "กำลังสมัคร..." : "ยืนยันสมัครใช้งาน"}
+              </button>
+            </div>
           </div>
-          <div>
-            <label className="text-sm text-inkSoft block mb-1">ตั้ง PIN (4-6 หลัก)</label>
-            <input
-              type="password"
-              inputMode="numeric"
-              pattern="\d*"
-              maxLength={6}
-              required
-              value={pin}
-              onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
-              className="w-full border border-paperLine rounded px-3 py-2 tracking-[0.3em] text-center font-nums focus:border-teal"
-            />
-          </div>
-          <div>
-            <label className="text-sm text-inkSoft block mb-1">ยืนยัน PIN อีกครั้ง</label>
-            <input
-              type="password"
-              inputMode="numeric"
-              pattern="\d*"
-              maxLength={6}
-              required
-              value={pinConfirm}
-              onChange={(e) => setPinConfirm(e.target.value.replace(/\D/g, ""))}
-              className="w-full border border-paperLine rounded px-3 py-2 tracking-[0.3em] text-center font-nums focus:border-teal"
-            />
-          </div>
-          {error && <p className="text-sm text-rust">{error}</p>}
-          <button
-            type="submit"
-            disabled={busy}
-            className="w-full bg-teal text-white rounded py-2 font-medium hover:bg-teal-dark disabled:opacity-60"
-          >
-            {busy ? "กำลังสมัคร..." : "สมัครใช้งาน"}
-          </button>
-        </form>
-        <p className="text-sm text-inkSoft mt-4">
+        )}
+
+        <p className="text-sm text-inkSoft mt-5">
           มีบัญชีอยู่แล้ว?{" "}
           <Link to="/login" className="text-teal font-medium">
             เข้าสู่ระบบ

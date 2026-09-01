@@ -3,13 +3,6 @@ import { collection, onSnapshot, doc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import Layout from "../components/Layout";
 
-const ROLE_LABEL = {
-  pending: "รออนุมัติ",
-  staff: "พนักงาน",
-  owner: "เจ้าของ/ผู้จัดการ",
-  guest: "ผู้อ่าน (Guest)",
-};
-
 export default function AdminUsers() {
   const [users, setUsers] = useState([]);
   const [busyId, setBusyId] = useState(null);
@@ -35,7 +28,10 @@ export default function AdminUsers() {
 
   return (
     <Layout>
-      <h1 className="font-slab text-lg mb-4">จัดการผู้ใช้งาน</h1>
+      <h1 className="font-slab text-lg mb-1">จัดการผู้ใช้งาน</h1>
+      <p className="text-sm text-inkSoft mb-4">
+        หมายเหตุ: แต่ละคนเปลี่ยน PIN ของตัวเองได้จากเมนู "เปลี่ยน PIN" หลังล็อกอิน — เจ้าของร้านไม่สามารถตั้ง/แก้ PIN แทนคนอื่นได้โดยตรง
+      </p>
 
       {pending.length > 0 && (
         <div className="mb-6">
@@ -48,7 +44,7 @@ export default function AdminUsers() {
               >
                 <div>
                   <div className="font-medium">{u.name}</div>
-                  <div className="text-xs text-inkSoft font-nums">@{u.username || "-"}</div>
+                  <div className="text-xs text-inkSoft font-nums">PIN: {u.pin || "-"}</div>
                 </div>
                 <div className="flex gap-2 flex-wrap">
                   <button
@@ -88,7 +84,7 @@ export default function AdminUsers() {
           >
             <div>
               <div className="font-medium">{u.name}</div>
-              <div className="text-xs text-inkSoft font-nums">@{u.username || "-"}</div>
+              <div className="text-xs text-inkSoft font-nums">PIN: {u.pin || "-"}</div>
             </div>
             <select
               value={u.role}
