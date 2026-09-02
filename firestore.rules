@@ -25,12 +25,28 @@ service cloud.firestore {
       return isSignedIn() && (role() == 'owner' || role() == 'staff' || role() == 'guest');
     }
 
+    // ---------- meta (ใช้เช็คว่ามีเจ้าของร้านคนแรกแล้วหรือยัง) ----------
+    match /meta/setup {
+      // อ่านได้แม้ยังไม่ล็อกอิน เพราะต้องเช็คตอนหน้าสมัครสมาชิกก่อนสร้างบัญชีด้วยซ้ำ
+      allow read: if true;
+      // สร้างได้ครั้งเดียวตอนบัญชีแรกของระบบสมัครสำเร็จ (ดู users create rule ด้านล่าง)
+      allow create: if isSignedIn();
+      allow update, delete: if false;
+    }
+
     // ---------- users ----------
     match /users/{userId} {
-      // สมัครสมาชิกได้เฉพาะสร้างเอกสารของตัวเอง และต้องเริ่มที่สถานะ pending เท่านั้น
+      // สมัครสมาชิกได้เฉพาะสร้างเอกสารของตัวเอง
+      // - คนทั่วไป: เริ่มที่สถานะ pending เท่านั้น รอเจ้าของอนุมัติ
+      // - ข้อยกเว้นเดียว: ถ้าเป็นคนแรกสุดของระบบ (ยังไม่มีเอกสาร meta/setup) จะตั้งตัวเองเป็น owner ได้ทันที
+      //   เพื่อไม่ต้องเข้า Firebase Console ไปแก้ role ด้วยมือทุกครั้งที่ตั้งระบบใหม่
       allow create: if isSignedIn()
         && request.auth.uid == userId
-        && request.resource.data.role == 'pending';
+        && (
+          request.resource.data.role == 'pending' ||
+          (request.resource.data.role == 'owner' &&
+            !exists(/databases/$(database)/documents/meta/setup))
+        );
 
       // อ่านได้เฉพาะเจ้าของบัญชีเอง หรือ owner (เพื่อจัดการสิทธิ์/แสดงชื่อผู้บันทึก)
       allow read: if isSignedIn() && (request.auth.uid == userId || isOwner());

@@ -53,18 +53,32 @@ export default function Register() {
         return;
       }
 
+      // ถ้ายังไม่มีใครตั้งระบบมาก่อนเลย (ยังไม่มี meta/setup) คนแรกที่สมัครจะกลายเป็นเจ้าของร้านทันที
+      // ไม่ต้องเข้า Firebase Console ไปแก้ role ด้วยมืออีกต่อไป
+      const setupSnap = await getDoc(doc(db, "meta", "setup"));
+      const isFirstEverUser = !setupSnap.exists();
+
       const email = randomPinEmail();
       const cred = await createUserWithEmailAndPassword(auth, email, pinToPassword(pin));
 
-      // สร้างโปรไฟล์ในสถานะ "pending" — ต้องรอเจ้าของร้านอนุมัติสิทธิ์ก่อนใช้งานได้
       await setDoc(doc(db, "users", cred.user.uid), {
         name: name.trim(),
         pin,
-        role: "pending",
+        role: isFirstEverUser ? "owner" : "pending",
         createdAt: serverTimestamp(),
       });
       // ผูก PIN นี้กับบัญชี เพื่อให้หน้า Login ค้นหาเจอตอนพิมพ์ PIN
       await setDoc(doc(db, "pinDirectory", pin), { uid: cred.user.uid, email });
+
+      if (isFirstEverUser) {
+        // ล็อกไว้ว่าตั้งเจ้าของร้านคนแรกไปแล้ว คนถัดไปที่สมัครจะเป็น pending ตามปกติเสมอ
+        await setDoc(doc(db, "meta", "setup"), {
+          ownerBootstrappedAt: serverTimestamp(),
+          ownerUid: cred.user.uid,
+        });
+        navigate("/");
+        return;
+      }
 
       navigate("/pending");
     } catch (err) {
@@ -80,7 +94,8 @@ export default function Register() {
       <div className="w-full max-w-sm bg-white border border-paperLine rounded-lg p-6 receipt-edge text-center">
         <h1 className="font-slab text-xl mb-1">ลงทะเบียนพนักงานใหม่</h1>
         <p className="text-sm text-inkSoft mb-5">
-          บัญชีใหม่จะอยู่ในสถานะ "รออนุมัติ" จนกว่าเจ้าของร้านจะกำหนดสิทธิ์ให้
+          ถ้าเป็นคนแรกที่สมัครเข้าระบบนี้ จะกลายเป็น "เจ้าของร้าน" ทันทีโดยอัตโนมัติ — คนถัดๆ ไปจะอยู่ในสถานะ
+          "รออนุมัติ" จนกว่าเจ้าของร้านจะกำหนดสิทธิ์ให้
         </p>
 
         {step === 1 && (
