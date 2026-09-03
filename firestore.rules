@@ -36,17 +36,21 @@ service cloud.firestore {
 
     // ---------- users ----------
     match /users/{userId} {
-      // สมัครสมาชิกได้เฉพาะสร้างเอกสารของตัวเอง
-      // - คนทั่วไป: เริ่มที่สถานะ pending เท่านั้น รอเจ้าของอนุมัติ
-      // - ข้อยกเว้นเดียว: ถ้าเป็นคนแรกสุดของระบบ (ยังไม่มีเอกสาร meta/setup) จะตั้งตัวเองเป็น owner ได้ทันที
-      //   เพื่อไม่ต้องเข้า Firebase Console ไปแก้ role ด้วยมือทุกครั้งที่ตั้งระบบใหม่
-      allow create: if isSignedIn()
-        && request.auth.uid == userId
-        && (
+      // สร้างเอกสารได้ 2 กรณี:
+      // 1) สมัครสมาชิกด้วยตัวเอง (self-registration) — เริ่มที่ pending เสมอ
+      //    ยกเว้นเป็นคนแรกสุดของระบบ (ยังไม่มีเอกสาร meta/setup) จะตั้งตัวเองเป็น owner ได้ทันที
+      //    เพื่อไม่ต้องเข้า Firebase Console ไปแก้ role ด้วยมือทุกครั้งที่ตั้งระบบใหม่
+      // 2) เจ้าของร้านเพิ่มพนักงาน/ผู้อ่านให้โดยตรงจากหน้า "ผู้ใช้งาน" — ไม่ต้องรอ pending
+      //    ตั้ง role ให้ตรงได้เลยตั้งแต่สร้าง (staff/guest/owner)
+      allow create: if isSignedIn() && (
+        (request.auth.uid == userId && (
           request.resource.data.role == 'pending' ||
           (request.resource.data.role == 'owner' &&
             !exists(/databases/$(database)/documents/meta/setup))
-        );
+        ))
+        ||
+        (isOwner() && request.resource.data.role in ['staff', 'guest', 'owner'])
+      );
 
       // อ่านได้เฉพาะเจ้าของบัญชีเอง หรือ owner (เพื่อจัดการสิทธิ์/แสดงชื่อผู้บันทึก)
       allow read: if isSignedIn() && (request.auth.uid == userId || isOwner());
@@ -180,8 +184,9 @@ service cloud.firestore {
       allow get: if true;
       allow list: if false;
       // สร้างได้เฉพาะการผูก PIN เข้ากับบัญชีของตัวเอง (ตอนสมัคร หรือตอนเปลี่ยน PIN)
+      // หรือ owner สร้างให้พนักงาน/ผู้อ่านที่เพิ่มเข้าระบบโดยตรงจากหน้า "ผู้ใช้งาน"
       // ถ้า PIN นั้นมีเจ้าของอยู่แล้ว คำขอนี้จะถูกตีความเป็น "update" ซึ่งไม่มี rule อนุญาต จึงถูกปฏิเสธอัตโนมัติ (กัน PIN ซ้ำ)
-      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow create: if isSignedIn() && (request.resource.data.uid == request.auth.uid || isOwner());
       // ลบได้เฉพาะเจ้าของ PIN นั้นเอง (ใช้ตอนเปลี่ยน PIN ใหม่ ต้องลบอันเก่าทิ้ง)
       allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
       allow update: if false;
