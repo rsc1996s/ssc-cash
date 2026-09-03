@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { signOut } from "firebase/auth";
 import { auth } from "../firebase";
 import { useNavigate } from "react-router-dom";
@@ -6,6 +7,14 @@ import { useAuth } from "../context/AuthContext";
 export default function PendingApproval() {
   const navigate = useNavigate();
   const { user, profile } = useAuth();
+
+  // ถ้า role ถูกอนุมัติ/เปลี่ยนแล้ว (ไม่ใช่ pending อีกต่อไป) ให้พากลับหน้าหลักอัตโนมัติทันที
+  // ไม่ต้องรอผู้ใช้กดรีเฟรชหรือออกจากระบบแล้วเข้าใหม่เอง
+  useEffect(() => {
+    if (profile && profile.role !== "pending") {
+      navigate("/", { replace: true });
+    }
+  }, [profile, navigate]);
 
   async function handleLogout() {
     await signOut(auth);
