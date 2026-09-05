@@ -3,6 +3,8 @@ import {
   collection,
   onSnapshot,
   addDoc,
+  deleteDoc,
+  doc,
   serverTimestamp,
   orderBy,
   query,
@@ -12,6 +14,77 @@ import { useAuth } from "../context/AuthContext";
 import Layout from "../components/Layout";
 import { formatBaht, formatDateTime } from "../lib/format";
 import { currentFundBalance } from "../lib/ledger";
+
+function CashCategoryManager() {
+  const [categories, setCategories] = useState([]);
+  const [label, setLabel] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "cashCategories"), (snap) =>
+      setCategories(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
+    );
+    return () => unsub();
+  }, []);
+
+  async function add(e) {
+    e.preventDefault();
+    if (!label.trim()) return;
+    setBusy(true);
+    try {
+      await addDoc(collection(db, "cashCategories"), {
+        label: label.trim(),
+        createdAt: serverTimestamp(),
+      });
+      setLabel("");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(id) {
+    if (!confirm("ลบหมวดหมู่นี้?")) return;
+    await deleteDoc(doc(db, "cashCategories", id));
+  }
+
+  return (
+    <div className="bg-white border border-paperLine rounded-lg p-5 receipt-edge max-w-md mt-6">
+      <h2 className="font-slab text-base mb-1">หมวดหมู่รายการเงินสด</h2>
+      <p className="text-xs text-inkSoft mb-3">
+        ใช้เลือกเร็วตอนบันทึกรายรับ-รายจ่ายเงินสด เช่น ค่าวัตถุดิบ, ค่าน้ำมัน, ค่าขนส่ง
+      </p>
+      <div className="flex flex-wrap gap-2 mb-3">
+        {categories.map((c) => (
+          <span
+            key={c.id}
+            className="text-xs bg-paper border border-paperLine rounded-full px-3 py-1 flex items-center gap-2"
+          >
+            {c.label}
+            <button onClick={() => remove(c.id)} className="text-rust">
+              ×
+            </button>
+          </span>
+        ))}
+        {categories.length === 0 && <p className="text-sm text-inkSoft">ยังไม่มีหมวดหมู่</p>}
+      </div>
+      <form onSubmit={add} className="flex gap-2">
+        <input
+          placeholder="ชื่อหมวดหมู่ใหม่"
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          className="flex-1 border border-paperLine rounded px-3 py-2 text-sm focus:border-teal"
+        />
+        <button
+          type="submit"
+          disabled={busy}
+          className="bg-teal text-white rounded px-4 py-2 text-sm font-medium disabled:opacity-60"
+        >
+          เพิ่ม
+        </button>
+      </form>
+    </div>
+  );
+}
 
 export default function AdminFunds() {
   const { user, profile } = useAuth();
@@ -187,6 +260,8 @@ export default function AdminFunds() {
           </button>
         </form>
       </div>
+
+      <CashCategoryManager />
     </Layout>
   );
 }

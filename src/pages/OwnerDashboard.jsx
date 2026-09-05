@@ -4,6 +4,7 @@ import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase";
 import Layout from "../components/Layout";
 import StatusBadge from "../components/StatusBadge";
+import LowFundBalanceBanner from "../components/LowFundBalanceBanner";
 import { formatBaht, formatDateTime, TYPE_LABEL } from "../lib/format";
 
 const STATUS_FILTERS = [
@@ -56,6 +57,8 @@ export default function OwnerDashboard() {
 
   return (
     <Layout>
+      <LowFundBalanceBanner />
+
       <div className="bg-ink text-paper rounded-lg px-5 py-4 mb-6 font-nums flex justify-between text-sm">
         <div>
           <div className="text-paper/60 text-xs mb-1">รายรับรวม (ไม่รวมตีกลับ/ยกเลิก)</div>

@@ -186,6 +186,12 @@ export default function TransactionDetail() {
                 <dd className="font-nums text-right">{formatBaht(tx.changeAmount)} บาท</dd>
               </>
             )}
+            {tx.category && (
+              <>
+                <dt className="text-inkSoft">หมวดหมู่</dt>
+                <dd className="text-right">{tx.category}</dd>
+              </>
+            )}
             <dt className="text-inkSoft">หมายเหตุ</dt>
             <dd className="text-right">{tx.note || "-"}</dd>
             <dt className="text-inkSoft">บันทึกเมื่อ</dt>
@@ -252,19 +258,32 @@ export default function TransactionDetail() {
           </form>
         )}
 
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          {tx.receiptPhotoURL && (
-            <a href={tx.receiptPhotoURL} target="_blank" rel="noreferrer">
-              <div className="text-xs text-inkSoft mb-1">รูปหลักฐาน</div>
-              <img src={tx.receiptPhotoURL} alt="หลักฐาน" className="rounded border border-paperLine w-full object-cover" />
-            </a>
-          )}
-          {tx.changePhotoURL && (
-            <a href={tx.changePhotoURL} target="_blank" rel="noreferrer">
-              <div className="text-xs text-inkSoft mb-1">รูปเงินทอน</div>
-              <img src={tx.changePhotoURL} alt="เงินทอน" className="rounded border border-paperLine w-full object-cover" />
-            </a>
-          )}
+        <div className="mb-4">
+          {(tx.receiptPhotoURLs?.length ? tx.receiptPhotoURLs : tx.receiptPhotoURL ? [tx.receiptPhotoURL] : [])
+            .length > 0 && <div className="text-xs text-inkSoft mb-1">รูปหลักฐาน</div>}
+          <div className="grid grid-cols-3 gap-3">
+            {(tx.receiptPhotoURLs?.length ? tx.receiptPhotoURLs : tx.receiptPhotoURL ? [tx.receiptPhotoURL] : []).map(
+              (url, i) => (
+                <a href={url} target="_blank" rel="noreferrer" key={i}>
+                  <img
+                    src={url}
+                    alt={`หลักฐาน ${i + 1}`}
+                    className="rounded border border-paperLine w-full aspect-square object-cover"
+                  />
+                </a>
+              )
+            )}
+            {tx.changePhotoURL && (
+              <a href={tx.changePhotoURL} target="_blank" rel="noreferrer">
+                <div className="text-xs text-inkSoft mb-1">เงินทอน</div>
+                <img
+                  src={tx.changePhotoURL}
+                  alt="เงินทอน"
+                  className="rounded border border-paperLine w-full aspect-square object-cover"
+                />
+              </a>
+            )}
+          </div>
         </div>
 
         {!editing && canEdit && (

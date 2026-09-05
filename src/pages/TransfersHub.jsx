@@ -2,11 +2,13 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase";
+import { useAuth } from "../context/AuthContext";
 import Layout from "../components/Layout";
 import { formatBaht, formatDate } from "../lib/format";
 import { remainingBalance, lineTotal } from "../lib/transfers";
 
 export default function TransfersHub() {
+  const { isOwner } = useAuth();
   const [tab, setTab] = useState("withdrawals");
   const [withdrawals, setWithdrawals] = useState([]);
   const [payments, setPayments] = useState([]);
@@ -19,48 +21,55 @@ export default function TransfersHub() {
           .sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0))
       )
     );
-    const unsub2 = onSnapshot(collection(db, "transferPayments"), (snap) =>
-      setPayments(
-        snap.docs
-          .map((d) => ({ id: d.id, ...d.data() }))
-          .sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0))
-      )
-    );
+    // พนักงานอ่าน transferPayments ไม่ได้ (สิทธิ์เจ้าของร้านเท่านั้น) จึงข้ามการฟังคอลเลกชันนี้ไปเลย
+    const unsub2 = isOwner
+      ? onSnapshot(collection(db, "transferPayments"), (snap) =>
+          setPayments(
+            snap.docs
+              .map((d) => ({ id: d.id, ...d.data() }))
+              .sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0))
+          )
+        )
+      : () => {};
     return () => {
       unsub1();
       unsub2();
     };
-  }, []);
+  }, [isOwner]);
 
   return (
     <Layout>
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <h1 className="font-slab text-lg">โอนจ่าย (ไม่ใช่เงินสด)</h1>
-        <Link to="/transfers/accounts" className="text-sm border border-paperLine rounded px-3 py-1.5">
-          บัญชีธนาคาร & หมวดหมู่
-        </Link>
+        <h1 className="font-slab text-lg">{isOwner ? "โอนจ่าย (ไม่ใช่เงินสด)" : "ใบเบิกเงินโอน"}</h1>
+        {isOwner && (
+          <Link to="/transfers/accounts" className="text-sm border border-paperLine rounded px-3 py-1.5">
+            บัญชีธนาคาร & หมวดหมู่
+          </Link>
+        )}
       </div>
 
-      <div className="flex gap-2 mb-4">
-        <button
-          onClick={() => setTab("withdrawals")}
-          className={`text-sm rounded-full px-4 py-1.5 border ${
-            tab === "withdrawals" ? "bg-ink text-white border-ink" : "border-paperLine text-inkSoft"
-          }`}
-        >
-          ใบเบิกเงินโอน
-        </button>
-        <button
-          onClick={() => setTab("payments")}
-          className={`text-sm rounded-full px-4 py-1.5 border ${
-            tab === "payments" ? "bg-ink text-white border-ink" : "border-paperLine text-inkSoft"
-          }`}
-        >
-          ใบโอนจ่าย
-        </button>
-      </div>
+      {isOwner && (
+        <div className="flex gap-2 mb-4">
+          <button
+            onClick={() => setTab("withdrawals")}
+            className={`text-sm rounded-full px-4 py-1.5 border ${
+              tab === "withdrawals" ? "bg-ink text-white border-ink" : "border-paperLine text-inkSoft"
+            }`}
+          >
+            ใบเบิกเงินโอน
+          </button>
+          <button
+            onClick={() => setTab("payments")}
+            className={`text-sm rounded-full px-4 py-1.5 border ${
+              tab === "payments" ? "bg-ink text-white border-ink" : "border-paperLine text-inkSoft"
+            }`}
+          >
+            ใบโอนจ่าย
+          </button>
+        </div>
+      )}
 
-      {tab === "withdrawals" ? (
+      {(!isOwner || tab === "withdrawals") ? (
         <>
           <div className="flex justify-end mb-3">
             <Link to="/transfers/withdrawals/new" className="text-sm bg-teal text-white rounded px-3 py-1.5 font-medium">
@@ -73,7 +82,7 @@ export default function TransfersHub() {
             <div className="space-y-3">
               {withdrawals.map((w) => {
                 const total = w.totalAmount ?? lineTotal(w.lines);
-                const remain = remainingBalance(w, payments);
+                const remain = isOwner ? remainingBalance(w, payments) : null;
                 return (
                   <div
                     key={w.id}
@@ -86,17 +95,20 @@ export default function TransfersHub() {
                           <div className="font-medium">{w.sourceAccountLabel}</div>
                           <div className="text-xs text-inkSoft mt-1">
                             {formatDate(w.date)} · {(w.lines || []).length} รายการ
+                            {!isOwner && w.createdByName ? ` · โดย ${w.createdByName}` : ""}
                           </div>
                         </div>
                         <div className="text-right">
                           <div className="font-nums text-lg">{formatBaht(total)}</div>
-                          <div
-                            className={`text-xs font-nums mt-1 ${
-                              remain <= 0 ? "text-teal" : "text-amber"
-                            }`}
-                          >
-                            {remain <= 0 ? "ตัดยอดครบแล้ว" : `คงเหลือ ${formatBaht(remain)}`}
-                          </div>
+                          {isOwner && (
+                            <div
+                              className={`text-xs font-nums mt-1 ${
+                                remain <= 0 ? "text-teal" : "text-amber"
+                              }`}
+                            >
+                              {remain <= 0 ? "ตัดยอดครบแล้ว" : `คงเหลือ ${formatBaht(remain)}`}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </Link>

@@ -33,6 +33,7 @@ export function buildFundLedger(fund, topups, transactions) {
         kind: t.type,
         label: t.type === "income" ? "รายรับ" : "รายจ่าย",
         detail: t.itemDescription,
+        category: t.category || null,
         amount: t.type === "income" ? t.amount : -t.amount,
         by: t.createdByName,
         ref: t.id,

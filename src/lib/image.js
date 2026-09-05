@@ -46,7 +46,7 @@ function approxBytesFromDataUrl(dataUrl) {
 /**
  * แปลงไฟล์รูปเป็น JPEG data URL ที่ย่อขนาดและบีบคุณภาพจนอยู่ใต้ maxBytes
  */
-export async function fileToCompressedDataUrl(file, { maxDim = 1000, maxBytes = 180000 } = {}) {
+export async function fileToCompressedDataUrl(file, { maxDim = 900, maxBytes = 120000 } = {}) {
   const img = await loadImage(file);
   const canvas = drawToCanvas(img, maxDim);
   let quality = 0.7;

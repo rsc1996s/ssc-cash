@@ -70,6 +70,12 @@ export default function PrintVoucher() {
               <td className="py-2 text-inkSoft">รายละเอียด</td>
               <td className="py-2 text-right">{tx.itemDescription}</td>
             </tr>
+            {tx.category && (
+              <tr className="border-b border-paperLine">
+                <td className="py-2 text-inkSoft">หมวดหมู่</td>
+                <td className="py-2 text-right">{tx.category}</td>
+              </tr>
+            )}
             {tx.type === "expense" && (
               <tr className="border-b border-paperLine">
                 <td className="py-2 text-inkSoft">เบิกเงินไป</td>

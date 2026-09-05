@@ -5,6 +5,7 @@ import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
 import Layout from "../components/Layout";
 import StatusBadge from "../components/StatusBadge";
+import LowFundBalanceBanner from "../components/LowFundBalanceBanner";
 import { formatBaht, formatDateTime, TYPE_LABEL, PAYMENT_LABEL } from "../lib/format";
 
 export default function StaffDashboard() {
@@ -29,6 +30,8 @@ export default function StaffDashboard() {
 
   return (
     <Layout>
+      <LowFundBalanceBanner />
+
       {/* Ledger tape summary */}
       <div className="bg-ink text-paper rounded-lg px-5 py-4 mb-6 font-nums flex justify-between text-sm">
         <div>

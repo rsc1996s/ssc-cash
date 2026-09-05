@@ -95,7 +95,7 @@ export default function App() {
           <Route
             path="/transfers"
             element={
-              <ProtectedRoute requireRole="owner">
+              <ProtectedRoute requireRole={["owner", "staff"]}>
                 <TransfersHub />
               </ProtectedRoute>
             }
@@ -111,7 +111,7 @@ export default function App() {
           <Route
             path="/transfers/withdrawals/new"
             element={
-              <ProtectedRoute requireRole="owner">
+              <ProtectedRoute requireRole={["owner", "staff"]}>
                 <WithdrawalRequestForm />
               </ProtectedRoute>
             }
@@ -119,7 +119,7 @@ export default function App() {
           <Route
             path="/transfers/withdrawals/:id"
             element={
-              <ProtectedRoute requireRole="owner">
+              <ProtectedRoute requireRole={["owner", "staff"]}>
                 <WithdrawalRequestForm />
               </ProtectedRoute>
             }
@@ -127,7 +127,7 @@ export default function App() {
           <Route
             path="/transfers/withdrawals/:id/print"
             element={
-              <ProtectedRoute requireRole="owner">
+              <ProtectedRoute requireRole={["owner", "staff"]}>
                 <WithdrawalRequestPrint />
               </ProtectedRoute>
             }

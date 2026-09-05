@@ -20,11 +20,13 @@ export default function WithdrawalRequestForm() {
   const { id } = useParams();
   const isNew = !id;
   const navigate = useNavigate();
-  const { user, profile } = useAuth();
+  const { user, profile, isOwner } = useAuth();
 
   const [sourceAccounts, setSourceAccounts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [requestNo, setRequestNo] = useState(null);
+  const [createdBy, setCreatedBy] = useState(null);
+  const [createdByName, setCreatedByName] = useState("");
   const [sourceAccountId, setSourceAccountId] = useState("");
   const [date, setDate] = useState(todayStr());
   const [note, setNote] = useState("");
@@ -32,6 +34,8 @@ export default function WithdrawalRequestForm() {
   const [loaded, setLoaded] = useState(isNew);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  const canEdit = isNew || isOwner || createdBy === user.uid;
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "bankAccounts"), (snap) => {
@@ -52,6 +56,8 @@ export default function WithdrawalRequestForm() {
       if (!snap.exists()) return;
       const d = snap.data();
       setRequestNo(d.requestNo);
+      setCreatedBy(d.createdBy || null);
+      setCreatedByName(d.createdByName || "");
       setSourceAccountId(d.sourceAccountId);
       setDate(d.date);
       setNote(d.note || "");
@@ -155,7 +161,9 @@ export default function WithdrawalRequestForm() {
 
       <div className="bg-white border border-paperLine rounded-lg p-6 receipt-edge">
         <div className="flex items-center justify-between mb-4">
-          <h1 className="font-slab text-xl">{isNew ? "สร้างใบเบิกเงินโอนใหม่" : `แก้ไขใบเบิก ${requestNo}`}</h1>
+          <h1 className="font-slab text-xl">
+            {isNew ? "สร้างใบเบิกเงินโอนใหม่" : `${canEdit ? "แก้ไข" : "ดู"}ใบเบิก ${requestNo}`}
+          </h1>
           {!isNew && (
             <Link to={`/transfers/withdrawals/${id}/print`} target="_blank" className="text-sm border border-paperLine rounded px-3 py-1.5">
               พิมพ์ / PDF
@@ -163,13 +171,20 @@ export default function WithdrawalRequestForm() {
           )}
         </div>
 
+        {!isNew && !canEdit && (
+          <p className="text-xs text-amber bg-amber-light border border-amber/40 rounded px-3 py-2 mb-4">
+            ใบเบิกนี้สร้างโดย {createdByName} — ดูได้อย่างเดียว แก้ไข/ลบได้เฉพาะผู้สร้างเองหรือเจ้าของร้าน
+          </p>
+        )}
+
         <div className="grid sm:grid-cols-2 gap-3 mb-5">
           <div>
             <label className="text-sm text-inkSoft block mb-1">รับโอนเข้าบัญชี (A)</label>
             <select
               value={sourceAccountId}
               onChange={(e) => setSourceAccountId(e.target.value)}
-              className="w-full border border-paperLine rounded px-3 py-2 focus:border-teal"
+              disabled={!canEdit}
+              className="w-full border border-paperLine rounded px-3 py-2 focus:border-teal disabled:bg-paper disabled:text-inkSoft"
             >
               <option value="">— เลือกบัญชี —</option>
               {sourceAccounts.map((a) => (
@@ -180,10 +195,7 @@ export default function WithdrawalRequestForm() {
             </select>
             {sourceAccounts.length === 0 && (
               <p className="text-xs text-amber mt-1">
-                ยังไม่มีบัญชีบันทึกไว้ —{" "}
-                <Link to="/transfers/accounts" className="underline">
-                  เพิ่มบัญชีก่อน
-                </Link>
+                ยังไม่มีบัญชีบันทึกไว้ — แจ้งเจ้าของร้านให้เพิ่มบัญชีในเมนู "บัญชีธนาคาร & หมวดหมู่" ก่อน
               </p>
             )}
           </div>
@@ -193,7 +205,8 @@ export default function WithdrawalRequestForm() {
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className="w-full border border-paperLine rounded px-3 py-2 focus:border-teal"
+              disabled={!canEdit}
+              className="w-full border border-paperLine rounded px-3 py-2 focus:border-teal disabled:bg-paper disabled:text-inkSoft"
             />
           </div>
         </div>
@@ -219,7 +232,8 @@ export default function WithdrawalRequestForm() {
                       value={l.categoryLabel}
                       onChange={(e) => updateLine(idx, "categoryLabel", e.target.value)}
                       placeholder="เลือก/พิมพ์หมวดหมู่"
-                      className="w-full border border-paperLine rounded px-2 py-1.5 text-sm focus:border-teal"
+                      disabled={!canEdit}
+                      className="w-full border border-paperLine rounded px-2 py-1.5 text-sm focus:border-teal disabled:bg-paper disabled:text-inkSoft"
                     />
                   </td>
                   <td className="py-1.5 pr-2">
@@ -227,7 +241,8 @@ export default function WithdrawalRequestForm() {
                       value={l.description}
                       onChange={(e) => updateLine(idx, "description", e.target.value)}
                       placeholder="รายละเอียด"
-                      className="w-full border border-paperLine rounded px-2 py-1.5 text-sm focus:border-teal"
+                      disabled={!canEdit}
+                      className="w-full border border-paperLine rounded px-2 py-1.5 text-sm focus:border-teal disabled:bg-paper disabled:text-inkSoft"
                     />
                   </td>
                   <td className="py-1.5 pr-2">
@@ -236,14 +251,17 @@ export default function WithdrawalRequestForm() {
                       step="0.01"
                       value={l.amount}
                       onChange={(e) => updateLine(idx, "amount", e.target.value)}
-                      className="w-full border border-paperLine rounded px-2 py-1.5 text-sm text-right font-nums focus:border-teal"
+                      disabled={!canEdit}
+                      className="w-full border border-paperLine rounded px-2 py-1.5 text-sm text-right font-nums focus:border-teal disabled:bg-paper disabled:text-inkSoft"
                       placeholder="0.00"
                     />
                   </td>
                   <td className="py-1.5 text-center">
-                    <button onClick={() => removeLine(idx)} className="text-rust text-xs">
-                      ลบ
-                    </button>
+                    {canEdit && (
+                      <button onClick={() => removeLine(idx)} className="text-rust text-xs">
+                        ลบ
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -256,9 +274,11 @@ export default function WithdrawalRequestForm() {
           </datalist>
         </div>
 
-        <button onClick={addLine} className="text-sm border border-paperLine rounded px-3 py-1.5 mb-4">
-          + เพิ่มบรรทัด
-        </button>
+        {canEdit && (
+          <button onClick={addLine} className="text-sm border border-paperLine rounded px-3 py-1.5 mb-4">
+            + เพิ่มบรรทัด
+          </button>
+        )}
 
         <div>
           <label className="text-sm text-inkSoft block mb-1">หมายเหตุ</label>
@@ -266,7 +286,8 @@ export default function WithdrawalRequestForm() {
             value={note}
             onChange={(e) => setNote(e.target.value)}
             rows={2}
-            className="w-full border border-paperLine rounded px-3 py-2 mb-4 focus:border-teal"
+            disabled={!canEdit}
+            className="w-full border border-paperLine rounded px-3 py-2 mb-4 focus:border-teal disabled:bg-paper disabled:text-inkSoft"
           />
         </div>
 
@@ -279,20 +300,22 @@ export default function WithdrawalRequestForm() {
 
         {error && <p className="text-sm text-rust mb-3">{error}</p>}
 
-        <div className="flex gap-2">
-          <button
-            onClick={handleSave}
-            disabled={busy}
-            className="bg-teal text-white rounded px-5 py-2.5 text-sm font-medium disabled:opacity-60"
-          >
-            {busy ? "กำลังบันทึก..." : "บันทึกใบเบิก"}
-          </button>
-          {!isNew && (
-            <button onClick={handleDelete} className="border border-rust text-rust rounded px-5 py-2.5 text-sm">
-              ลบใบเบิกนี้
+        {canEdit && (
+          <div className="flex gap-2">
+            <button
+              onClick={handleSave}
+              disabled={busy}
+              className="bg-teal text-white rounded px-5 py-2.5 text-sm font-medium disabled:opacity-60"
+            >
+              {busy ? "กำลังบันทึก..." : "บันทึกใบเบิก"}
             </button>
-          )}
-        </div>
+            {!isNew && (
+              <button onClick={handleDelete} className="border border-rust text-rust rounded px-5 py-2.5 text-sm">
+                ลบใบเบิกนี้
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </Layout>
   );

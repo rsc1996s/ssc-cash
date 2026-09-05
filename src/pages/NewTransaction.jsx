@@ -6,6 +6,9 @@ import { useAuth } from "../context/AuthContext";
 import Layout from "../components/Layout";
 import { fileToCompressedDataUrl, approxKb } from "../lib/image";
 
+const MAX_RECEIPT_PHOTOS = 3;
+const TOTAL_PHOTO_KB_WARNING = 700;
+
 const emptyForm = {
   fundId: "",
   type: "expense",
@@ -14,6 +17,7 @@ const emptyForm = {
   itemDescription: "",
   changeAmount: "",
   paymentMethod: "cash",
+  category: "",
   note: "",
 };
 
@@ -22,7 +26,8 @@ export default function NewTransaction() {
   const navigate = useNavigate();
   const [form, setForm] = useState(emptyForm);
   const [funds, setFunds] = useState([]);
-  const [receiptPhoto, setReceiptPhoto] = useState(null); // { dataUrl, kb }
+  const [categories, setCategories] = useState([]);
+  const [receiptPhotos, setReceiptPhotos] = useState([]); // [{ dataUrl, kb }]
   const [changePhoto, setChangePhoto] = useState(null);
   const [compressing, setCompressing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -34,27 +39,59 @@ export default function NewTransaction() {
       setFunds(list);
       setForm((f) => (f.fundId ? f : { ...f, fundId: list[0]?.id || "" }));
     });
-    return () => unsub();
+    const unsub2 = onSnapshot(collection(db, "cashCategories"), (snap) => {
+      setCategories(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    });
+    return () => {
+      unsub();
+      unsub2();
+    };
   }, []);
 
   function update(field, value) {
     setForm((f) => ({ ...f, [field]: value }));
   }
 
-  async function handlePhotoSelect(file, setter) {
-    if (!file) {
-      setter(null);
+  const totalPhotoKb =
+    receiptPhotos.reduce((s, p) => s + p.kb, 0) + (changePhoto ? changePhoto.kb : 0);
+
+  async function addReceiptPhoto(file) {
+    if (!file) return;
+    if (receiptPhotos.length >= MAX_RECEIPT_PHOTOS) {
+      setError(`แนบรูปหลักฐานได้สูงสุด ${MAX_RECEIPT_PHOTOS} รูปต่อรายการ`);
       return;
     }
     setCompressing(true);
     setError("");
     try {
       const dataUrl = await fileToCompressedDataUrl(file);
-      setter({ dataUrl, kb: approxKb(dataUrl) });
+      setReceiptPhotos((ps) => [...ps, { dataUrl, kb: approxKb(dataUrl) }]);
     } catch (err) {
       console.error(err);
       setError("อ่านไฟล์รูปไม่สำเร็จ ลองเลือกรูปใหม่อีกครั้ง");
-      setter(null);
+    } finally {
+      setCompressing(false);
+    }
+  }
+
+  function removeReceiptPhoto(idx) {
+    setReceiptPhotos((ps) => ps.filter((_, i) => i !== idx));
+  }
+
+  async function handleChangePhotoSelect(file) {
+    if (!file) {
+      setChangePhoto(null);
+      return;
+    }
+    setCompressing(true);
+    setError("");
+    try {
+      const dataUrl = await fileToCompressedDataUrl(file);
+      setChangePhoto({ dataUrl, kb: approxKb(dataUrl) });
+    } catch (err) {
+      console.error(err);
+      setError("อ่านไฟล์รูปไม่สำเร็จ ลองเลือกรูปใหม่อีกครั้ง");
+      setChangePhoto(null);
     } finally {
       setCompressing(false);
     }
@@ -76,8 +113,8 @@ export default function NewTransaction() {
       setError("กรุณาระบุรายละเอียดรายการ (ซื้ออะไร / รายรับจากอะไร)");
       return;
     }
-    if (!receiptPhoto) {
-      setError("กรุณาแนบรูปหลักฐาน (สลิป/ใบเสร็จ) เพื่อความโปร่งใส");
+    if (receiptPhotos.length === 0) {
+      setError("กรุณาแนบรูปหลักฐาน (สลิป/ใบเสร็จ) อย่างน้อย 1 รูป เพื่อความโปร่งใส");
       return;
     }
 
@@ -94,8 +131,10 @@ export default function NewTransaction() {
         itemDescription: form.itemDescription.trim(),
         changeAmount: form.changeAmount ? Number(form.changeAmount) : 0,
         paymentMethod: form.paymentMethod,
+        category: form.category || "",
         note: form.note.trim(),
-        receiptPhotoURL: receiptPhoto.dataUrl,
+        receiptPhotoURL: receiptPhotos[0].dataUrl, // เก็บรูปแรกไว้ในฟิลด์เดิมด้วย เพื่อให้ของเก่ายังใช้ได้
+        receiptPhotoURLs: receiptPhotos.map((p) => p.dataUrl),
         changePhotoURL: changePhoto?.dataUrl || null,
         status: "pending",
         createdBy: user.uid,
@@ -210,6 +249,22 @@ export default function NewTransaction() {
             />
           </div>
 
+          <div>
+            <label className="text-sm text-inkSoft block mb-1">หมวดหมู่ (ถ้ามี)</label>
+            <input
+              list="cash-category-options"
+              value={form.category}
+              onChange={(e) => update("category", e.target.value)}
+              placeholder="เลือก/พิมพ์หมวดหมู่"
+              className="w-full border border-paperLine rounded px-3 py-2 focus:border-teal"
+            />
+            <datalist id="cash-category-options">
+              {categories.map((c) => (
+                <option key={c.id} value={c.label} />
+              ))}
+            </datalist>
+          </div>
+
           {form.type === "expense" && (
             <div>
               <label className="text-sm text-inkSoft block mb-1">เงินทอนที่ได้รับกลับมา (บาท)</label>
@@ -246,19 +301,46 @@ export default function NewTransaction() {
 
           <div>
             <label className="text-sm text-inkSoft block mb-1">
-              รูปหลักฐาน (สลิป/ใบเสร็จ) <span className="text-rust">*จำเป็น</span>
+              รูปหลักฐาน (สลิป/ใบเสร็จ) <span className="text-rust">*จำเป็นอย่างน้อย 1 รูป</span>
             </label>
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              required
-              onChange={(e) => handlePhotoSelect(e.target.files?.[0] || null, setReceiptPhoto)}
-              className="w-full text-sm"
-            />
-            {receiptPhoto && (
-              <p className="text-xs text-teal mt-1">พร้อมแนบ (บีบอัดแล้วเหลือ ~{receiptPhoto.kb} KB)</p>
+
+            {receiptPhotos.length > 0 && (
+              <div className="grid grid-cols-3 gap-2 mb-2">
+                {receiptPhotos.map((p, idx) => (
+                  <div key={idx} className="relative">
+                    <img
+                      src={p.dataUrl}
+                      alt={`หลักฐาน ${idx + 1}`}
+                      className="rounded border border-paperLine w-full h-20 object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeReceiptPhoto(idx)}
+                      className="absolute top-1 right-1 bg-white/90 border border-paperLine rounded-full w-5 h-5 text-xs text-rust leading-none"
+                    >
+                      ×
+                    </button>
+                    <div className="text-[10px] text-inkSoft text-center mt-0.5">~{p.kb} KB</div>
+                  </div>
+                ))}
+              </div>
             )}
+
+            {receiptPhotos.length < MAX_RECEIPT_PHOTOS && (
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={(e) => {
+                  addReceiptPhoto(e.target.files?.[0] || null);
+                  e.target.value = "";
+                }}
+                className="w-full text-sm"
+              />
+            )}
+            <p className="text-xs text-inkSoft mt-1">
+              แนบได้สูงสุด {MAX_RECEIPT_PHOTOS} รูปต่อรายการ ({receiptPhotos.length}/{MAX_RECEIPT_PHOTOS})
+            </p>
           </div>
 
           {form.type === "expense" && (
@@ -268,13 +350,19 @@ export default function NewTransaction() {
                 type="file"
                 accept="image/*"
                 capture="environment"
-                onChange={(e) => handlePhotoSelect(e.target.files?.[0] || null, setChangePhoto)}
+                onChange={(e) => handleChangePhotoSelect(e.target.files?.[0] || null)}
                 className="w-full text-sm"
               />
               {changePhoto && (
                 <p className="text-xs text-teal mt-1">พร้อมแนบ (บีบอัดแล้วเหลือ ~{changePhoto.kb} KB)</p>
               )}
             </div>
+          )}
+
+          {totalPhotoKb > TOTAL_PHOTO_KB_WARNING && (
+            <p className="text-xs text-amber">
+              * รูปที่แนบรวมกันมีขนาดค่อนข้างใหญ่ (~{totalPhotoKb} KB) ถ้าบันทึกไม่สำเร็จ ลองลดจำนวนรูปดู
+            </p>
           )}
 
           <div>

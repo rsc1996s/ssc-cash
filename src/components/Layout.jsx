@@ -1,11 +1,41 @@
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { signOut } from "firebase/auth";
-import { auth } from "../firebase";
+import { collection, query, where, onSnapshot } from "firebase/firestore";
+import { auth, db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
 
+function NavBadge({ count }) {
+  if (!count) return null;
+  return (
+    <span className="ml-1 inline-flex items-center justify-center min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-rust text-white text-[10px] font-nums leading-none">
+      {count}
+    </span>
+  );
+}
+
 export default function Layout({ children }) {
-  const { profile, isOwner, isGuest } = useAuth();
+  const { profile, isOwner, isGuest, isStaff } = useAuth();
   const navigate = useNavigate();
+  const [pendingTxCount, setPendingTxCount] = useState(0);
+  const [pendingUserCount, setPendingUserCount] = useState(0);
+
+  // แจ้งเตือนเฉพาะเจ้าของร้าน: มีกี่รายการรออนุมัติ / กี่บัญชีรอกำหนดสิทธิ์
+  useEffect(() => {
+    if (!isOwner) return;
+    const unsub1 = onSnapshot(
+      query(collection(db, "transactions"), where("status", "==", "pending")),
+      (snap) => setPendingTxCount(snap.size)
+    );
+    const unsub2 = onSnapshot(
+      query(collection(db, "users"), where("role", "==", "pending")),
+      (snap) => setPendingUserCount(snap.size)
+    );
+    return () => {
+      unsub1();
+      unsub2();
+    };
+  }, [isOwner]);
 
   async function handleLogout() {
     await signOut(auth);
@@ -28,6 +58,11 @@ export default function Layout({ children }) {
                 + บันทึกใหม่
               </Link>
             )}
+            {isStaff && (
+              <Link to="/transfers" className="hover:text-teal">
+                ใบเบิกเงินโอน
+              </Link>
+            )}
             {isGuest && (
               <Link to="/reports" className="hover:text-teal">
                 รายงาน
@@ -35,11 +70,13 @@ export default function Layout({ children }) {
             )}
             {isOwner && (
               <>
-                <Link to="/owner" className="hover:text-teal">
+                <Link to="/owner" className="hover:text-teal flex items-center">
                   ตรวจสอบทั้งหมด
+                  <NavBadge count={pendingTxCount} />
                 </Link>
-                <Link to="/admin/users" className="hover:text-teal">
+                <Link to="/admin/users" className="hover:text-teal flex items-center">
                   ผู้ใช้งาน
+                  <NavBadge count={pendingUserCount} />
                 </Link>
                 <Link to="/admin/funds" className="hover:text-teal">
                   กองทุน

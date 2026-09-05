@@ -4,6 +4,7 @@ import { db } from "../firebase";
 import Layout from "../components/Layout";
 import { formatBaht, formatDateTime, TYPE_LABEL } from "../lib/format";
 import { buildFundLedger, statementForRange } from "../lib/ledger";
+import OverviewCharts from "../components/OverviewCharts";
 
 function toInputDate(d) {
   return d.toISOString().slice(0, 10);
@@ -73,7 +74,7 @@ export default function Reports() {
   return (
     <Layout>
       <div className="no-print flex items-center justify-between mb-4">
-        <h1 className="font-slab text-lg">รายงาน Statement</h1>
+        <h1 className="font-slab text-lg">รายงาน Statement & ภาพรวม</h1>
         {statement && (
           <button
             onClick={() => window.print()}
@@ -199,6 +200,8 @@ export default function Reports() {
           </dl>
         </div>
       )}
+
+      {statement && <OverviewCharts statement={statement} fromDate={new Date(from + "T00:00:00")} />}
     </Layout>
   );
 }
