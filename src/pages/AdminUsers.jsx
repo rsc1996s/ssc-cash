@@ -6,12 +6,13 @@ import Layout from "../components/Layout";
 import PinPad from "../components/PinPad";
 import { createAccountWithoutSigningIn } from "../lib/createAccount";
 import { pinToPassword, randomPinEmail, PIN_PATTERN } from "../lib/auth";
+import Combobox from "../components/Combobox";
 
-const ROLE_LABEL = {
-  staff: "พนักงาน",
-  guest: "ผู้อ่าน (Guest)",
-  owner: "เจ้าของ/ผู้จัดการ",
-};
+const ROLE_OPTIONS = [
+  { value: "staff", label: "พนักงาน" },
+  { value: "guest", label: "ผู้อ่าน (Guest)" },
+  { value: "owner", label: "เจ้าของ/ผู้จัดการ" },
+];
 
 function AddEmployeeForm({ onClose }) {
   const { user } = useAuth();
@@ -107,16 +108,16 @@ function AddEmployeeForm({ onClose }) {
           <div>
             <label className="text-sm text-inkSoft block mb-1">บทบาท</label>
             <div className="flex gap-2">
-              {["staff", "guest", "owner"].map((r) => (
+              {ROLE_OPTIONS.map((r) => (
                 <button
                   type="button"
-                  key={r}
-                  onClick={() => setRole(r)}
+                  key={r.value}
+                  onClick={() => setRole(r.value)}
                   className={`flex-1 py-2 rounded border text-sm font-medium ${
-                    role === r ? "bg-ink text-white border-ink" : "border-paperLine text-inkSoft"
+                    role === r.value ? "bg-ink text-white border-ink" : "border-paperLine text-inkSoft"
                   }`}
                 >
-                  {ROLE_LABEL[r]}
+                  {r.label}
                 </button>
               ))}
             </div>
@@ -296,16 +297,13 @@ export default function AdminUsers() {
               <div className="font-medium">{u.name}</div>
               <div className="text-xs text-inkSoft font-nums">PIN: {u.pin || "-"}</div>
             </div>
-            <select
+            <Combobox
               value={u.role}
-              onChange={(e) => setRole(u.id, e.target.value)}
+              onChange={(role) => setRole(u.id, role)}
+              options={ROLE_OPTIONS}
               disabled={busyId === u.id}
-              className="text-xs border border-paperLine rounded px-2 py-1.5"
-            >
-              <option value="staff">พนักงาน</option>
-              <option value="guest">ผู้อ่าน (Guest)</option>
-              <option value="owner">เจ้าของ/ผู้จัดการ</option>
-            </select>
+              className="w-44"
+            />
           </div>
         ))}
       </div>

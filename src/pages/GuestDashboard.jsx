@@ -4,8 +4,10 @@ import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase";
 import Layout from "../components/Layout";
 import StatusBadge from "../components/StatusBadge";
-import { formatBaht, formatDateTime, TYPE_LABEL } from "../lib/format";
+import TypeBadge from "../components/TypeBadge";
+import { formatBaht, formatDateTime } from "../lib/format";
 import { currentFundBalance } from "../lib/ledger";
+import Combobox from "../components/Combobox";
 
 export default function GuestDashboard() {
   const [rows, setRows] = useState([]);
@@ -57,30 +59,18 @@ export default function GuestDashboard() {
       </div>
 
       <div className="flex flex-wrap gap-2 mb-4">
-        <select
+        <Combobox
           value={staffFilter}
-          onChange={(e) => setStaffFilter(e.target.value)}
-          className="text-xs border border-paperLine rounded-full px-3 py-1.5"
-        >
-          <option value="all">พนักงานทุกคน</option>
-          {staffNames.map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
-          ))}
-        </select>
-        <select
+          onChange={setStaffFilter}
+          options={[{ value: "all", label: "พนักงานทุกคน" }, ...staffNames.map((n) => ({ value: n, label: n }))]}
+          className="w-48"
+        />
+        <Combobox
           value={fundFilter}
-          onChange={(e) => setFundFilter(e.target.value)}
-          className="text-xs border border-paperLine rounded-full px-3 py-1.5"
-        >
-          <option value="all">ทุกฝั่ง</option>
-          {funds.map((f) => (
-            <option key={f.id} value={f.id}>
-              {f.label}
-            </option>
-          ))}
-        </select>
+          onChange={setFundFilter}
+          options={[{ value: "all", label: "ทุกฝั่ง" }, ...funds.map((f) => ({ value: f.id, label: f.label }))]}
+          className="w-48"
+        />
       </div>
 
       {filtered.length === 0 ? (
@@ -94,11 +84,14 @@ export default function GuestDashboard() {
             >
               <Link to={`/transaction/${r.id}`} className="flex-1 min-w-0">
                 <div className="flex justify-between items-start">
-                  <div>
-                    <div className="text-xs text-inkSoft mb-1">
-                      {r.fundLabel} · {TYPE_LABEL[r.type]} · โดย {r.createdByName}
+                  <div className="min-w-0">
+                    <div className="mb-1">
+                      <TypeBadge type={r.type} />
                     </div>
-                    <div className="font-medium">{r.itemDescription}</div>
+                    <div className="text-xs text-inkSoft mb-1">
+                      {r.fundLabel} · โดย {r.createdByName}
+                    </div>
+                    <div className="font-medium truncate">{r.itemDescription}</div>
                     <div className="text-xs text-inkSoft mt-1">{formatDateTime(r.createdAt)}</div>
                   </div>
                   <div className="text-right">

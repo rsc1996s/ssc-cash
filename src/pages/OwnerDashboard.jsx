@@ -4,8 +4,12 @@ import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase";
 import Layout from "../components/Layout";
 import StatusBadge from "../components/StatusBadge";
+import TypeBadge from "../components/TypeBadge";
 import LowFundBalanceBanner from "../components/LowFundBalanceBanner";
-import { formatBaht, formatDateTime, TYPE_LABEL } from "../lib/format";
+import Combobox from "../components/Combobox";
+import MetricCard from "../components/MetricCard";
+import { formatBaht, formatDateTime } from "../lib/format";
+import { ArrowUpRight, ArrowDownRight, ClipboardList } from "lucide-react";
 
 const STATUS_FILTERS = [
   { key: "all", label: "ทั้งหมด" },
@@ -59,19 +63,21 @@ export default function OwnerDashboard() {
     <Layout>
       <LowFundBalanceBanner />
 
-      <div className="bg-ink text-paper rounded-lg px-5 py-4 mb-6 font-nums flex justify-between text-sm">
-        <div>
-          <div className="text-paper/60 text-xs mb-1">รายรับรวม (ไม่รวมตีกลับ/ยกเลิก)</div>
-          <div className="text-teal-light text-lg">{formatBaht(totalIn)}</div>
-        </div>
-        <div>
-          <div className="text-paper/60 text-xs mb-1">รายจ่ายรวม</div>
-          <div className="text-amber text-lg">{formatBaht(totalOut)}</div>
-        </div>
-        <div>
-          <div className="text-paper/60 text-xs mb-1">รอตรวจสอบ</div>
-          <div className="text-lg">{pendingCount} รายการ</div>
-        </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        <MetricCard
+          label="รายรับรวม"
+          value={formatBaht(totalIn)}
+          icon={ArrowUpRight}
+          tone="income"
+          sublabel="ไม่รวมตีกลับ/ยกเลิก"
+        />
+        <MetricCard label="รายจ่ายรวม" value={formatBaht(totalOut)} icon={ArrowDownRight} tone="expense" />
+        <MetricCard
+          label="รอตรวจสอบ"
+          value={`${pendingCount} รายการ`}
+          icon={ClipboardList}
+          tone="primary"
+        />
       </div>
 
       <h1 className="font-slab text-lg mb-3">ตรวจสอบรายการทั้งหมด</h1>
@@ -90,30 +96,21 @@ export default function OwnerDashboard() {
             {f.label}
           </button>
         ))}
-        <select
+        <Combobox
           value={staffFilter}
-          onChange={(e) => setStaffFilter(e.target.value)}
-          className="text-xs border border-paperLine rounded-full px-3 py-1.5"
-        >
-          <option value="all">พนักงานทุกคน</option>
-          {staffNames.map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
-          ))}
-        </select>
-        <select
+          onChange={setStaffFilter}
+          options={[{ value: "all", label: "พนักงานทุกคน" }, ...staffNames.map((n) => ({ value: n, label: n }))]}
+          className="w-48"
+        />
+        <Combobox
           value={fundFilter}
-          onChange={(e) => setFundFilter(e.target.value)}
-          className="text-xs border border-paperLine rounded-full px-3 py-1.5"
-        >
-          <option value="all">ทุกฝั่ง</option>
-          {Object.entries(funds).map(([id, label]) => (
-            <option key={id} value={id}>
-              {label}
-            </option>
-          ))}
-        </select>
+          onChange={setFundFilter}
+          options={[
+            { value: "all", label: "ทุกฝั่ง" },
+            ...Object.entries(funds).map(([id, label]) => ({ value: id, label })),
+          ]}
+          className="w-48"
+        />
       </div>
 
       {filtered.length === 0 ? (
@@ -127,11 +124,14 @@ export default function OwnerDashboard() {
             >
               <Link to={`/transaction/${r.id}`} className="flex-1 min-w-0">
                 <div className="flex justify-between items-start">
-                  <div>
-                    <div className="text-xs text-inkSoft mb-1">
-                      {r.fundLabel} · {TYPE_LABEL[r.type]} · โดย {r.createdByName}
+                  <div className="min-w-0">
+                    <div className="mb-1">
+                      <TypeBadge type={r.type} />
                     </div>
-                    <div className="font-medium">{r.itemDescription}</div>
+                    <div className="text-xs text-inkSoft mb-1">
+                      {r.fundLabel} · โดย {r.createdByName}
+                    </div>
+                    <div className="font-medium truncate">{r.itemDescription}</div>
                     <div className="text-xs text-inkSoft mt-1">{formatDateTime(r.createdAt)}</div>
                   </div>
                   <div className="text-right">

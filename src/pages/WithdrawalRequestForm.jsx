@@ -7,6 +7,7 @@ import Layout from "../components/Layout";
 import { formatBaht } from "../lib/format";
 import { nextDocNumber } from "../lib/counters";
 import { lineTotal, renumberLines } from "../lib/transfers";
+import Combobox from "../components/Combobox";
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
@@ -180,19 +181,17 @@ export default function WithdrawalRequestForm() {
         <div className="grid sm:grid-cols-2 gap-3 mb-5">
           <div>
             <label className="text-sm text-inkSoft block mb-1">รับโอนเข้าบัญชี (A)</label>
-            <select
+            <Combobox
               value={sourceAccountId}
-              onChange={(e) => setSourceAccountId(e.target.value)}
+              onChange={setSourceAccountId}
               disabled={!canEdit}
-              className="w-full border border-paperLine rounded px-3 py-2 focus:border-teal disabled:bg-paper disabled:text-inkSoft"
-            >
-              <option value="">— เลือกบัญชี —</option>
-              {sourceAccounts.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.bankName} · {a.accountNumber} ({a.accountName})
-                </option>
-              ))}
-            </select>
+              placeholder="— เลือกบัญชี —"
+              options={sourceAccounts.map((a) => ({
+                value: a.id,
+                label: `${a.bankName} · ${a.accountNumber}`,
+                sublabel: a.accountName,
+              }))}
+            />
             {sourceAccounts.length === 0 && (
               <p className="text-xs text-amber mt-1">
                 ยังไม่มีบัญชีบันทึกไว้ — แจ้งเจ้าของร้านให้เพิ่มบัญชีในเมนู "บัญชีธนาคาร & หมวดหมู่" ก่อน

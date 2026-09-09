@@ -7,6 +7,7 @@ import Layout from "../components/Layout";
 import { formatBaht } from "../lib/format";
 import { nextDocNumber } from "../lib/counters";
 import { lineTotal, renumberLines, remainingBalance } from "../lib/transfers";
+import Combobox from "../components/Combobox";
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
@@ -202,39 +203,35 @@ export default function TransferPaymentForm() {
         <div className="grid sm:grid-cols-2 gap-3 mb-3">
           <div>
             <label className="text-sm text-inkSoft block mb-1">โอนจากบัญชี (A)</label>
-            <select
+            <Combobox
               value={sourceAccountId}
-              onChange={(e) => {
-                setSourceAccountId(e.target.value);
+              onChange={(v) => {
+                setSourceAccountId(v);
                 setLinkedWithdrawalRequestId("");
               }}
-              className="w-full border border-paperLine rounded px-3 py-2 focus:border-teal"
-            >
-              <option value="">— เลือกบัญชี —</option>
-              {sourceAccounts.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.bankName} · {a.accountNumber} ({a.accountName})
-                </option>
-              ))}
-            </select>
+              placeholder="— เลือกบัญชี —"
+              options={sourceAccounts.map((a) => ({
+                value: a.id,
+                label: `${a.bankName} · ${a.accountNumber}`,
+                sublabel: a.accountName,
+              }))}
+            />
           </div>
           <div>
             <label className="text-sm text-inkSoft block mb-1">ตัดยอดกับใบเบิกเลขที่</label>
-            <select
+            <Combobox
               value={linkedWithdrawalRequestId}
-              onChange={(e) => selectWithdrawal(e.target.value)}
-              className="w-full border border-paperLine rounded px-3 py-2 focus:border-teal"
-            >
-              <option value="">— เลือกใบเบิก —</option>
-              {availableWithdrawals.map((w) => {
+              onChange={selectWithdrawal}
+              placeholder="— เลือกใบเบิก —"
+              options={availableWithdrawals.map((w) => {
                 const remain = remainingBalance(w, allPayments.filter((p) => p.id !== id));
-                return (
-                  <option key={w.id} value={w.id}>
-                    {w.requestNo} · คงเหลือ {formatBaht(remain)} บาท
-                  </option>
-                );
+                return {
+                  value: w.id,
+                  label: w.requestNo,
+                  sublabel: `คงเหลือ ${formatBaht(remain)} บาท`,
+                };
               })}
-            </select>
+            />
           </div>
         </div>
 
@@ -269,18 +266,16 @@ export default function TransferPaymentForm() {
                     />
                   </td>
                   <td className="py-1.5 pr-2">
-                    <select
+                    <Combobox
                       value={l.payeeAccountId}
-                      onChange={(e) => updateLine(idx, "payeeAccountId", e.target.value)}
-                      className="w-full border border-paperLine rounded px-2 py-1.5 text-sm focus:border-teal"
-                    >
-                      <option value="">— เลือกบัญชีผู้รับ —</option>
-                      {payeeAccounts.map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.bankName} · {a.accountNumber} ({a.accountName})
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(v) => updateLine(idx, "payeeAccountId", v)}
+                      placeholder="— เลือกบัญชีผู้รับ —"
+                      options={payeeAccounts.map((a) => ({
+                        value: a.id,
+                        label: `${a.bankName} · ${a.accountNumber}`,
+                        sublabel: a.accountName,
+                      }))}
+                    />
                   </td>
                   <td className="py-1.5 pr-2">
                     <input
