@@ -210,7 +210,51 @@ export default function WithdrawalRequestForm() {
           </div>
         </div>
 
-        <div className="mb-2 overflow-x-auto">
+        {/* มือถือ: การ์ดแนวตั้งต่อ 1 บรรทัด (แทนตารางที่ต้องเลื่อนแนวนอน) */}
+        <div className="md:hidden space-y-3 mb-3">
+          {lines.map((l, idx) => (
+            <div key={idx} className="border border-paperLine rounded-lg p-3 bg-paper/40">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-nums text-inkSoft">รายการที่ {idx + 1}</span>
+                {canEdit && (
+                  <button onClick={() => removeLine(idx)} className="text-rust text-xs px-2 py-1 -mr-2">
+                    ลบ
+                  </button>
+                )}
+              </div>
+              <div className="space-y-2">
+                <input
+                  list="category-options"
+                  value={l.categoryLabel}
+                  onChange={(e) => updateLine(idx, "categoryLabel", e.target.value)}
+                  placeholder="หมวดหมู่ (เลือก/พิมพ์)"
+                  disabled={!canEdit}
+                  className="w-full border border-paperLine rounded px-3 py-2.5 text-sm focus:border-teal disabled:bg-paper disabled:text-inkSoft"
+                />
+                <input
+                  value={l.description}
+                  onChange={(e) => updateLine(idx, "description", e.target.value)}
+                  placeholder="รายละเอียด"
+                  disabled={!canEdit}
+                  className="w-full border border-paperLine rounded px-3 py-2.5 text-sm focus:border-teal disabled:bg-paper disabled:text-inkSoft"
+                />
+                <input
+                  type="number"
+                  step="0.01"
+                  inputMode="decimal"
+                  value={l.amount}
+                  onChange={(e) => updateLine(idx, "amount", e.target.value)}
+                  disabled={!canEdit}
+                  placeholder="ยอดเงิน"
+                  className="w-full border border-paperLine rounded px-3 py-2.5 text-sm text-right font-nums focus:border-teal disabled:bg-paper disabled:text-inkSoft"
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* จอกลาง/ใหญ่: ตารางปกติ */}
+        <div className="hidden md:block mb-2 overflow-x-auto">
           <table className="w-full text-sm min-w-[640px]">
             <thead>
               <tr className="text-left text-xs text-inkSoft border-b border-paperLine">
