@@ -3,6 +3,7 @@ import {
   collection,
   onSnapshot,
   addDoc,
+  updateDoc,
   deleteDoc,
   doc,
   serverTimestamp,
@@ -14,6 +15,7 @@ import { useAuth } from "../context/AuthContext";
 import Layout from "../components/Layout";
 import { formatBaht, formatDateTime } from "../lib/format";
 import { currentFundBalance } from "../lib/ledger";
+import { Pencil } from "lucide-react";
 
 function CashCategoryManager() {
   const [categories, setCategories] = useState([]);
@@ -94,6 +96,8 @@ export default function AdminFunds() {
 
   const [newFund, setNewFund] = useState({ label: "", openingBalance: "" });
   const [topupDraft, setTopupDraft] = useState({}); // { [fundId]: {amount, note} }
+  const [editingId, setEditingId] = useState(null);
+  const [editDraft, setEditDraft] = useState({ label: "", openingBalance: "" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -153,6 +157,33 @@ export default function AdminFunds() {
     }
   }
 
+  function startEdit(fund) {
+    setEditingId(fund.id);
+    setEditDraft({ label: fund.label, openingBalance: String(fund.openingBalance) });
+    setError("");
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+  }
+
+  async function saveEdit(fundId) {
+    if (!editDraft.label.trim() || editDraft.openingBalance === "") {
+      setError("กรุณากรอกชื่อฝั่งและยอดเงินตั้งต้น");
+      return;
+    }
+    setBusy(true);
+    try {
+      await updateDoc(doc(db, "funds", fundId), {
+        label: editDraft.label.trim(),
+        openingBalance: Number(editDraft.openingBalance),
+      });
+      setEditingId(null);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <Layout>
       <h1 className="font-slab text-lg mb-4">กองทุนหมุนเวียน</h1>
@@ -163,18 +194,69 @@ export default function AdminFunds() {
           const draft = topupDraft[f.id] || { amount: "", note: "" };
           return (
             <div key={f.id} className="bg-white border border-paperLine rounded-lg p-5 receipt-edge">
-              <div className="flex justify-between items-start mb-3">
-                <div>
-                  <div className="font-slab text-lg">{f.label}</div>
-                  <div className="text-xs text-inkSoft">
-                    ยอดตั้งต้น {formatBaht(f.openingBalance)} บาท
+              {editingId === f.id ? (
+                <div className="mb-3">
+                  <div className="grid sm:grid-cols-2 gap-3 mb-3">
+                    <div>
+                      <label className="text-xs text-inkSoft block mb-1">ชื่อฝั่ง</label>
+                      <input
+                        value={editDraft.label}
+                        onChange={(e) => setEditDraft((d) => ({ ...d, label: e.target.value }))}
+                        className="w-full border border-paperLine rounded px-3 py-2 text-sm focus:border-teal"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-inkSoft block mb-1">ยอดเงินตั้งต้น (บาท)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={editDraft.openingBalance}
+                        onChange={(e) => setEditDraft((d) => ({ ...d, openingBalance: e.target.value }))}
+                        className="w-full border border-paperLine rounded px-3 py-2 text-sm font-nums focus:border-teal"
+                      />
+                    </div>
+                  </div>
+                  {error && <p className="text-sm text-rust mb-2">{error}</p>}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => saveEdit(f.id)}
+                      disabled={busy}
+                      className="bg-teal text-white rounded px-4 py-1.5 text-sm font-medium disabled:opacity-60"
+                    >
+                      บันทึก
+                    </button>
+                    <button
+                      onClick={cancelEdit}
+                      disabled={busy}
+                      className="border border-paperLine rounded px-4 py-1.5 text-sm"
+                    >
+                      ยกเลิก
+                    </button>
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className="text-xs text-inkSoft">ยอดคงเหลือปัจจุบัน</div>
-                  <div className="font-nums text-2xl text-teal">{formatBaht(balance)}</div>
+              ) : (
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <div className="font-slab text-lg">{f.label}</div>
+                      <button
+                        onClick={() => startEdit(f)}
+                        className="text-inkSoft hover:text-teal p-1 -m-1"
+                        title="แก้ไขฝั่งนี้"
+                      >
+                        <Pencil size={14} />
+                      </button>
+                    </div>
+                    <div className="text-xs text-inkSoft">
+                      ยอดตั้งต้น {formatBaht(f.openingBalance)} บาท
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs text-inkSoft">ยอดคงเหลือปัจจุบัน</div>
+                    <div className="font-nums text-2xl text-teal">{formatBaht(balance)}</div>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="flex gap-2 items-end border-t border-paperLine pt-3">
                 <div className="flex-1">

@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { signOut } from "firebase/auth";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { auth, db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
+import { initials } from "./Sidebar";
 import {
   Receipt,
   PlusCircle,
@@ -17,7 +18,6 @@ import {
   LogOut,
   Menu,
   X,
-  ChevronDown,
 } from "lucide-react";
 
 function NavBadge({ count }) {
@@ -29,40 +29,16 @@ function NavBadge({ count }) {
   );
 }
 
-function NavLink({ to, icon: Icon, label, badge, active, onClick }) {
-  return (
-    <Link
-      to={to}
-      onClick={onClick}
-      className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-        active ? "bg-white/10 text-white" : "text-paper/75 hover:text-white hover:bg-white/5"
-      }`}
-    >
-      <Icon size={17} strokeWidth={2} />
-      <span>{label}</span>
-      <NavBadge count={badge} />
-    </Link>
-  );
-}
-
-function initials(name) {
-  if (!name) return "?";
-  const parts = name.trim().split(/\s+/);
-  return parts.length > 1 ? (parts[0][0] + parts[1][0]).toUpperCase() : parts[0].slice(0, 2).toUpperCase();
-}
-
+// แถบนี้ครอบคลุมเฉพาะจอมือถือ+แท็บเล็ต (ต่ำกว่า lg) — จอเดสก์ท็อป (lg+) ใช้ Sidebar.jsx แทนทั้งหมด
 export default function Navbar() {
   const { profile, isOwner, isGuest, isStaff } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [pendingTxCount, setPendingTxCount] = useState(0);
   const [pendingUserCount, setPendingUserCount] = useState(0);
-  const profileRef = useRef(null);
 
-  // แจ้งเตือนเฉพาะเจ้าของร้าน: มีกี่รายการรออนุมัติ / กี่บัญชีรอกำหนดสิทธิ์
   useEffect(() => {
     if (!isOwner) return;
     const unsub1 = onSnapshot(
@@ -79,18 +55,8 @@ export default function Navbar() {
     };
   }, [isOwner]);
 
-  // ปิด dropdown โปรไฟล์เมื่อคลิกนอกกรอบ
   useEffect(() => {
-    function onClickOutside(e) {
-      if (profileRef.current && !profileRef.current.contains(e.target)) setProfileOpen(false);
-    }
-    document.addEventListener("mousedown", onClickOutside);
-    return () => document.removeEventListener("mousedown", onClickOutside);
-  }, []);
-
-  // ปิดเมนูมือถือทุกครั้งที่เปลี่ยนหน้า
-  useEffect(() => {
-    setMobileOpen(false);
+    setMenuOpen(false);
   }, [location.pathname]);
 
   async function handleLogout() {
@@ -111,101 +77,31 @@ export default function Navbar() {
   ].filter((item) => item.show);
 
   return (
-    <header className="no-print bg-ink text-paper sticky top-0 z-20">
-      <div className="max-w-6xl mx-auto px-4">
-        <div className="flex items-center justify-between h-14">
-          {/* โลโก้/ชื่อระบบ */}
-          <Link to="/" className="font-slab text-base sm:text-lg tracking-tight shrink-0">
+    <>
+      {/* แถบบน — โลโก้ + ปุ่มเปิดเมนู/โปรไฟล์ */}
+      <header className="no-print lg:hidden bg-ink text-paper sticky top-0 z-20">
+        <div className="px-4 flex items-center justify-between h-14">
+          <Link to="/" className="font-slab text-base tracking-tight truncate">
             บันทึกเงินสดหน้าร้าน
           </Link>
-
-          {/* เมนูหลัก — เดสก์ท็อป */}
-          <nav className="hidden lg:flex items-center gap-1 mx-4">
-            {navItems.map((item) => (
-              <NavLink key={item.label} {...item} active={isActive(item.to)} />
-            ))}
-          </nav>
-
-          <div className="flex items-center gap-2 shrink-0">
-            {/* ปุ่ม Action หลัก — โชว์เฉพาะจอใหญ่ (จอเล็กมีปุ่ม + ลอยที่แถบล่างแทนแล้ว) */}
-            {!isGuest && (
-              <Link
-                to="/new"
-                className="hidden lg:flex items-center gap-1.5 bg-teal hover:bg-teal-dark text-white rounded-md px-3.5 py-2 text-sm font-medium transition-colors"
-              >
-                <PlusCircle size={17} />
-                บันทึกใหม่
-              </Link>
-            )}
-
-            {/* โปรไฟล์ผู้ใช้งาน */}
-            <div ref={profileRef} className="relative">
-              <button
-                onClick={() => setProfileOpen((o) => !o)}
-                className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-white/10 transition-colors"
-              >
-                <span className="w-8 h-8 rounded-full bg-teal flex items-center justify-center text-xs font-semibold shrink-0">
-                  {initials(profile?.name)}
-                </span>
-                <span className="hidden md:inline text-sm text-paper/85 max-w-[9rem] truncate">
-                  {profile?.name}
-                </span>
-                <ChevronDown size={15} className="hidden md:inline text-paper/60" />
-              </button>
-
-              {profileOpen && (
-                <div className="absolute right-0 mt-2 w-52 bg-white text-ink rounded-lg shadow-lg border border-paperLine overflow-hidden">
-                  <div className="px-4 py-3 border-b border-paperLine">
-                    <div className="text-sm font-medium truncate">{profile?.name}</div>
-                    <div className="text-xs text-inkSoft">
-                      {isOwner ? "เจ้าของ/ผู้จัดการ" : isStaff ? "พนักงาน" : "ผู้อ่าน (Guest)"}
-                    </div>
-                  </div>
-                  <Link
-                    to="/change-pin"
-                    onClick={() => setProfileOpen(false)}
-                    className="flex items-center gap-2 px-4 py-3 text-sm hover:bg-paper"
-                  >
-                    <KeyRound size={16} className="text-inkSoft" />
-                    เปลี่ยน PIN
-                  </Link>
-                  <button
-                    onClick={handleLogout}
-                    className="w-full flex items-center gap-2 px-4 py-3 text-sm text-rust hover:bg-paper"
-                  >
-                    <LogOut size={16} />
-                    ออกจากระบบ
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* ปุ่มเมนูมือถือ — โชว์เฉพาะจอกลาง (md) ที่ยังไม่มีแถบเมนูล่างแบบมือถือจริง */}
-            <button
-              onClick={() => setMobileOpen((o) => !o)}
-              className="hidden md:flex lg:hidden items-center justify-center w-9 h-9 rounded-md hover:bg-white/10"
-              aria-label="เมนู"
-            >
-              {mobileOpen ? <X size={20} /> : <Menu size={20} />}
-            </button>
-          </div>
+          <button
+            onClick={() => setMenuOpen((o) => !o)}
+            className="flex items-center gap-2 rounded-md pl-1 pr-2 py-1 hover:bg-white/10 transition-colors shrink-0"
+          >
+            <span className="w-7 h-7 rounded-full bg-teal flex items-center justify-center text-xs font-semibold">
+              {initials(profile?.name)}
+            </span>
+            <Menu size={18} />
+          </button>
         </div>
-      </div>
+      </header>
 
-      {/* เมนูหลัก — แท็บเล็ต (md) เมื่อกดปุ่มแฮมเบอร์เกอร์ */}
-      {mobileOpen && (
-        <div className="hidden md:block lg:hidden border-t border-white/10 bg-ink">
-          <nav className="max-w-6xl mx-auto px-4 py-2 flex flex-col gap-1">
-            {navItems.map((item) => (
-              <NavLink key={item.label} {...item} active={isActive(item.to)} />
-            ))}
-          </nav>
-        </div>
-      )}
-
-      {/* แผงเมนูเต็ม — เปิดจากแท็บ "เมนู" ที่แถบล่างบนมือถือจริง */}
-      {mobileOpen && (
-        <div className="md:hidden fixed inset-0 z-30 flex flex-col justify-end" onClick={() => setMobileOpen(false)}>
+      {/* แผงเมนูเต็ม — bottom sheet เปิดจากแท็บ "เมนู" หรือปุ่มโปรไฟล์มุมบน */}
+      {menuOpen && (
+        <div
+          className="lg:hidden fixed inset-0 z-30 flex flex-col justify-end"
+          onClick={() => setMenuOpen(false)}
+        >
           <div className="absolute inset-0 bg-ink/40" />
           <div
             className="relative bg-white text-ink rounded-t-2xl shadow-lg pb-24 max-h-[75vh] overflow-y-auto"
@@ -218,7 +114,7 @@ export default function Navbar() {
                   {isOwner ? "เจ้าของ/ผู้จัดการ" : isStaff ? "พนักงาน" : "ผู้อ่าน (Guest)"}
                 </div>
               </div>
-              <button onClick={() => setMobileOpen(false)} className="p-2 -mr-2 text-inkSoft">
+              <button onClick={() => setMenuOpen(false)} className="p-2 -mr-2 text-inkSoft">
                 <X size={20} />
               </button>
             </div>
@@ -227,7 +123,7 @@ export default function Navbar() {
                 <Link
                   key={item.label}
                   to={item.to}
-                  onClick={() => setMobileOpen(false)}
+                  onClick={() => setMenuOpen(false)}
                   className={`flex items-center gap-3 px-3 py-3.5 rounded-lg text-sm font-medium ${
                     isActive(item.to) ? "bg-teal-light text-teal-dark" : "text-ink hover:bg-paper"
                   }`}
@@ -240,7 +136,7 @@ export default function Navbar() {
               <div className="my-2 border-t border-paperLine" />
               <Link
                 to="/change-pin"
-                onClick={() => setMobileOpen(false)}
+                onClick={() => setMenuOpen(false)}
                 className="flex items-center gap-3 px-3 py-3.5 rounded-lg text-sm font-medium text-ink hover:bg-paper"
               >
                 <KeyRound size={19} className="text-inkSoft" />
@@ -258,16 +154,16 @@ export default function Navbar() {
         </div>
       )}
 
-      {/* แถบเมนูล่าง — เฉพาะมือถือจริง (ใต้ md) เข้าถึงเมนูหลักได้โดยไม่ต้องเอื้อมขึ้นบน */}
+      {/* แถบเมนูล่าง — เข้าถึงเมนูหลักโดยไม่ต้องเอื้อมขึ้นบน */}
       <MobileTabBar
         isOwner={isOwner}
         isStaff={isStaff}
         isGuest={isGuest}
         pendingTxCount={pendingTxCount}
         isActive={isActive}
-        onOpenMenu={() => setMobileOpen(true)}
+        onOpenMenu={() => setMenuOpen(true)}
       />
-    </header>
+    </>
   );
 }
 
@@ -311,7 +207,7 @@ function MobileTabBar({ isOwner, isStaff, isGuest, pendingTxCount, isActive, onO
   const right = contextual.slice(1);
 
   return (
-    <nav className="md:hidden no-print fixed bottom-0 inset-x-0 z-20 bg-white border-t border-paperLine flex items-stretch pb-[env(safe-area-inset-bottom)]">
+    <nav className="lg:hidden no-print fixed bottom-0 inset-x-0 z-20 bg-white border-t border-paperLine flex items-stretch pb-[env(safe-area-inset-bottom)]">
       <TabItem to="/" icon={Receipt} label="หน้าแรก" active={isActive("/")} />
       {left.map((item) => (
         <TabItem key={item.label} {...item} active={isActive(item.to)} />
