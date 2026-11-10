@@ -5,6 +5,12 @@ import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
 import Layout from "../components/Layout";
 import { fileToCompressedDataUrl, approxKb } from "../lib/image";
+import Card from "../components/ui/Card";
+import Input from "../components/ui/Input";
+import Textarea from "../components/ui/Textarea";
+import FormHeader from "../components/ui/FormHeader";
+import { useFeedback } from "../components/ui/FeedbackProvider";
+import Sheet from "../components/ui/Sheet";
 
 const MAX_RECEIPT_PHOTOS = 3;
 const TOTAL_PHOTO_KB_WARNING = 700;
@@ -24,6 +30,7 @@ const emptyForm = {
 export default function NewTransaction() {
   const { user, profile } = useAuth();
   const navigate = useNavigate();
+  const { confirm, toast } = useFeedback();
   const [form, setForm] = useState(emptyForm);
   const [funds, setFunds] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -32,6 +39,8 @@ export default function NewTransaction() {
   const [compressing, setCompressing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
+  const [categorySearch, setCategorySearch] = useState("");
 
   useEffect(() => {
     const unsub = onSnapshot(query(collection(db, "funds"), orderBy("createdAt", "asc")), (snap) => {
@@ -54,6 +63,20 @@ export default function NewTransaction() {
 
   const totalPhotoKb =
     receiptPhotos.reduce((s, p) => s + p.kb, 0) + (changePhoto ? changePhoto.kb : 0);
+  const dirty = Object.keys(emptyForm).some((key) => key !== "fundId" && form[key] !== emptyForm[key]) ||
+    (funds.length > 0 && form.fundId !== funds[0].id) ||
+    receiptPhotos.length > 0 || Boolean(changePhoto);
+
+  async function cancelForm() {
+    if (dirty && !await confirm({
+      title: "ยกเลิกการบันทึก",
+      description: "ข้อมูลและรูปที่เพิ่มไว้แต่ยังไม่ได้บันทึกจะหายไป",
+      confirmLabel: "ทิ้งข้อมูล",
+      cancelLabel: "ทำต่อ",
+      danger: true,
+    })) return;
+    navigate("/");
+  }
 
   async function addReceiptPhoto(file) {
     if (!file) return;
@@ -103,18 +126,22 @@ export default function NewTransaction() {
 
     if (!form.fundId) {
       setError("กรุณาเลือกฝั่งเงินหมุนเวียน");
+      document.getElementById("transaction-fund-choice")?.focus();
       return;
     }
     if (!form.amount || Number(form.amount) <= 0) {
       setError("กรุณาระบุจำนวนเงินให้ถูกต้อง");
+      document.getElementById("transaction-amount")?.focus();
       return;
     }
     if (!form.itemDescription.trim()) {
       setError("กรุณาระบุรายละเอียดรายการ (ซื้ออะไร / รายรับจากอะไร)");
+      document.getElementById("transaction-description")?.focus();
       return;
     }
     if (receiptPhotos.length === 0) {
       setError("กรุณาแนบรูปหลักฐาน (สลิป/ใบเสร็จ) อย่างน้อย 1 รูป เพื่อความโปร่งใส");
+      document.querySelector('input[aria-label="ถ่ายหรือเลือกรูปหลักฐาน"]')?.focus();
       return;
     }
 
@@ -148,6 +175,7 @@ export default function NewTransaction() {
         editHistory: [],
       });
 
+      toast("บันทึกรายการแล้ว");
       navigate("/");
     } catch (err) {
       console.error(err);
@@ -159,233 +187,292 @@ export default function NewTransaction() {
 
   return (
     <Layout>
-      <div className="max-w-lg mx-auto bg-white border border-paperLine rounded-lg p-6 receipt-edge">
-        <h1 className="font-slab text-xl mb-1">บันทึกรายการใหม่</h1>
-        <p className="text-sm text-inkSoft mb-5">รายการนี้จะรอเจ้าของร้านตรวจสอบและอนุมัติ</p>
-
+      <Card className="mx-auto max-w-lg p-4 sm:p-6">
         {funds.length === 0 && (
-          <p className="text-sm text-amber bg-amber-light rounded px-3 py-2 mb-4">
-            ยังไม่มีฝั่งเงินหมุนเวียนในระบบ — ให้เจ้าของร้านไปที่เมนู "กองทุน" เพื่อสร้างฝั่งก่อน
+          <p className="mb-4 rounded-lg bg-amber-light px-3 py-2 text-sm text-amber">
+            ยังไม่มีงบค่าใช้จ่าย ให้เจ้าของร้านสร้างงบค่าใช้จ่ายก่อน
           </p>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="text-sm text-inkSoft block mb-1">ฝั่งเงินหมุนเวียน</label>
-            <div className="flex gap-2">
-              {funds.map((f) => (
+        <form id="new-transaction-form" onSubmit={handleSubmit} noValidate className="space-y-5">
+          <FormHeader
+            title="บันทึกรายการใหม่"
+            onCancel={cancelForm}
+            formId="new-transaction-form"
+            saving={busy || compressing}
+            savingLabel={compressing ? "กำลังจัดการรูป..." : "กำลังบันทึก..."}
+            saveDisabled={funds.length === 0}
+            saveLabel="บันทึก"
+          />
+          <fieldset>
+            <legend className="mb-2 text-sm font-semibold">ประเภท</legend>
+            <div className="grid grid-cols-2 gap-2">
+              {["income", "expense"].map((type) => (
                 <button
                   type="button"
-                  key={f.id}
-                  onClick={() => update("fundId", f.id)}
-                  className={`flex-1 py-2 rounded border text-sm font-medium ${
-                    form.fundId === f.id
-                      ? "bg-ink text-white border-ink"
-                      : "border-paperLine text-inkSoft"
+                  key={type}
+                  aria-pressed={form.type === type}
+                  onClick={() => update("type", type)}
+                  className={`rounded-xl border px-3 py-3 text-base font-semibold ${
+                    form.type === type
+                      ? type === "income"
+                        ? "border-green-600 bg-green-600 text-white"
+                        : "border-red-600 bg-red-600 text-white"
+                      : "border-paperLine bg-white text-inkSoft"
                   }`}
                 >
-                  {f.label}
+                  {type === "income" ? "รายรับ" : "รายจ่าย"}
                 </button>
               ))}
             </div>
-          </div>
-
-          <div className="flex gap-2">
-            {["expense", "income"].map((t) => (
-              <button
-                type="button"
-                key={t}
-                onClick={() => update("type", t)}
-                className={`flex-1 py-2 rounded border text-sm font-medium ${
-                  form.type === t
-                    ? "bg-teal text-white border-teal"
-                    : "border-paperLine text-inkSoft"
-                }`}
-              >
-                {t === "expense" ? "รายจ่าย" : "รายรับ"}
-              </button>
-            ))}
-          </div>
-
-          {form.type === "expense" && (
-            <div>
-              <label className="text-sm text-inkSoft block mb-1">เบิกเงินไปเท่าไหร่ (บาท)</label>
-              <input
-                type="number"
-                step="0.01"
-                value={form.withdrawnAmount}
-                onChange={(e) => update("withdrawnAmount", e.target.value)}
-                className="w-full border border-paperLine rounded px-3 py-2 font-nums focus:border-teal"
-                placeholder="เช่น 500"
-              />
-            </div>
-          )}
+          </fieldset>
 
           <div>
-            <label className="text-sm text-inkSoft block mb-1">
+            <label htmlFor="transaction-amount" className="mb-2 block text-sm font-semibold">
               {form.type === "expense" ? "ยอดที่จ่ายจริง (บาท)" : "จำนวนเงินรับ (บาท)"}
             </label>
-            <input
+            <Input
+              id="transaction-amount"
               type="number"
+              inputMode="decimal"
               step="0.01"
               required
               value={form.amount}
               onChange={(e) => update("amount", e.target.value)}
-              className="w-full border border-paperLine rounded px-3 py-2 font-nums focus:border-teal"
+              className="h-16 text-right text-2xl font-bold font-nums"
               placeholder="0.00"
             />
           </div>
 
           <div>
-            <label className="text-sm text-inkSoft block mb-1">
+            <label htmlFor="transaction-description" className="mb-2 block text-sm font-semibold">
               {form.type === "expense" ? "ซื้ออะไร / รายละเอียดรายจ่าย" : "รายละเอียดรายรับ"}
             </label>
-            <input
+            <Input
+              id="transaction-description"
               required
               value={form.itemDescription}
               onChange={(e) => update("itemDescription", e.target.value)}
-              className="w-full border border-paperLine rounded px-3 py-2 focus:border-teal"
               placeholder="เช่น ซื้อวัตถุดิบทำอาหาร"
             />
           </div>
 
           <div>
-            <label className="text-sm text-inkSoft block mb-1">หมวดหมู่ (ถ้ามี)</label>
-            <input
+            <label htmlFor="transaction-category" className="mb-2 block text-sm font-semibold">
+              หมวดหมู่ (ถ้ามี)
+            </label>
+            <Input
+              id="transaction-category"
               list="cash-category-options"
               value={form.category}
               onChange={(e) => update("category", e.target.value)}
-              placeholder="เลือก/พิมพ์หมวดหมู่"
-              className="w-full border border-paperLine rounded px-3 py-2 focus:border-teal"
+              placeholder="เลือกหรือพิมพ์หมวดหมู่"
             />
+            {categories.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setCategoryPickerOpen(true)}
+                className="mt-2 min-h-11 w-full rounded-lg border border-paperLine bg-white text-sm text-blue-700"
+              >
+                เลือกหมวดหมู่
+              </button>
+            )}
             <datalist id="cash-category-options">
-              {categories.map((c) => (
-                <option key={c.id} value={c.label} />
-              ))}
+              {categories.map((category) => <option key={category.id} value={category.label} />)}
             </datalist>
           </div>
 
-          {form.type === "expense" && (
-            <div>
-              <label className="text-sm text-inkSoft block mb-1">เงินทอนที่ได้รับกลับมา (บาท)</label>
-              <input
-                type="number"
-                step="0.01"
-                value={form.changeAmount}
-                onChange={(e) => update("changeAmount", e.target.value)}
-                className="w-full border border-paperLine rounded px-3 py-2 font-nums focus:border-teal"
-                placeholder="0.00"
-              />
-            </div>
-          )}
-
           <div>
-            <label className="text-sm text-inkSoft block mb-1">ช่องทางการชำระเงิน</label>
-            <div className="flex gap-2">
-              {["cash", "transfer"].map((m) => (
+            <label className="mb-2 block text-sm font-semibold">ฝั่งเงินหมุนเวียน</label>
+            <div className="grid grid-cols-2 gap-2">
+              {funds.map((fund, index) => (
                 <button
                   type="button"
-                  key={m}
-                  onClick={() => update("paymentMethod", m)}
-                  className={`flex-1 py-2 rounded border text-sm font-medium ${
-                    form.paymentMethod === m
-                      ? "bg-ink text-white border-ink"
-                      : "border-paperLine text-inkSoft"
+                  id={index === 0 ? "transaction-fund-choice" : undefined}
+                  key={fund.id}
+                  aria-pressed={form.fundId === fund.id}
+                  onClick={() => update("fundId", fund.id)}
+                  className={`rounded-lg border px-3 py-2.5 text-sm font-medium ${
+                    form.fundId === fund.id ? "border-blue-600 bg-blue-50 text-blue-700" : "border-paperLine text-inkSoft"
                   }`}
                 >
-                  {m === "cash" ? "เงินสด" : "โอนเงิน"}
+                  {fund.label}
                 </button>
               ))}
             </div>
           </div>
 
           <div>
-            <label className="text-sm text-inkSoft block mb-1">
-              รูปหลักฐาน (สลิป/ใบเสร็จ) <span className="text-rust">*จำเป็นอย่างน้อย 1 รูป</span>
+            <label className="mb-2 block text-sm font-semibold">
+              รูปหลักฐาน <span className="text-red-600">จำเป็นอย่างน้อย 1 รูป</span>
             </label>
-
             {receiptPhotos.length > 0 && (
-              <div className="grid grid-cols-3 gap-2 mb-2">
-                {receiptPhotos.map((p, idx) => (
-                  <div key={idx} className="relative">
-                    <img
-                      src={p.dataUrl}
-                      alt={`หลักฐาน ${idx + 1}`}
-                      className="rounded border border-paperLine w-full h-20 object-cover"
-                    />
+              <div className="mb-2 grid grid-cols-3 gap-2">
+                {receiptPhotos.map((photo, index) => (
+                  <div key={index} className="relative min-w-0">
+                    <img src={photo.dataUrl} alt={`หลักฐาน ${index + 1}`} className="h-24 w-full rounded-lg border border-paperLine object-cover" />
                     <button
                       type="button"
-                      onClick={() => removeReceiptPhoto(idx)}
-                      className="absolute top-1 right-1 bg-white/90 border border-paperLine rounded-full w-5 h-5 text-xs text-rust leading-none"
+                      aria-label={`ลบรูปหลักฐาน ${index + 1}`}
+                      onClick={() => removeReceiptPhoto(index)}
+                      className="absolute right-1 top-1 flex h-8 w-8 items-center justify-center rounded-full border border-paperLine bg-white text-red-600"
                     >
                       ×
                     </button>
-                    <div className="text-[10px] text-inkSoft text-center mt-0.5">~{p.kb} KB</div>
+                    <div className="mt-1 text-center text-xs text-inkSoft">~{photo.kb} KB</div>
                   </div>
                 ))}
               </div>
             )}
-
             {receiptPhotos.length < MAX_RECEIPT_PHOTOS && (
               <input
                 type="file"
                 accept="image/*"
                 capture="environment"
+                aria-label="ถ่ายหรือเลือกรูปหลักฐาน"
                 onChange={(e) => {
                   addReceiptPhoto(e.target.files?.[0] || null);
                   e.target.value = "";
                 }}
-                className="w-full text-sm"
+                className="w-full rounded-lg border border-paperLine bg-blue-50 p-3 text-sm"
               />
             )}
-            <p className="text-xs text-inkSoft mt-1">
-              แนบได้สูงสุด {MAX_RECEIPT_PHOTOS} รูปต่อรายการ ({receiptPhotos.length}/{MAX_RECEIPT_PHOTOS})
+            <p className="mt-1 text-xs text-inkSoft">
+              แนบได้สูงสุด {MAX_RECEIPT_PHOTOS} รูป ({receiptPhotos.length}/{MAX_RECEIPT_PHOTOS})
             </p>
           </div>
 
-          {form.type === "expense" && (
-            <div>
-              <label className="text-sm text-inkSoft block mb-1">รูปเงินทอน (ถ้ามี)</label>
-              <input
-                type="file"
-                accept="image/*"
-                capture="environment"
-                onChange={(e) => handleChangePhotoSelect(e.target.files?.[0] || null)}
-                className="w-full text-sm"
-              />
-              {changePhoto && (
-                <p className="text-xs text-teal mt-1">พร้อมแนบ (บีบอัดแล้วเหลือ ~{changePhoto.kb} KB)</p>
+          <details className="rounded-xl border border-paperLine bg-blue-50/60 p-4">
+            <summary className="cursor-pointer text-sm font-semibold text-blue-700">รายละเอียดเพิ่มเติม</summary>
+            <div className="mt-4 space-y-4">
+              {form.type === "expense" && (
+                <>
+                  <div>
+                    <label htmlFor="withdrawn-amount" className="mb-1 block text-sm">เบิกเงินไปเท่าไหร่ (บาท)</label>
+                    <Input
+                      id="withdrawn-amount"
+                      type="number"
+                      inputMode="decimal"
+                      step="0.01"
+                      value={form.withdrawnAmount}
+                      onChange={(e) => update("withdrawnAmount", e.target.value)}
+                      placeholder="เช่น 500"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="change-amount" className="mb-1 block text-sm">เงินทอนที่ได้รับกลับมา (บาท)</label>
+                    <Input
+                      id="change-amount"
+                      type="number"
+                      inputMode="decimal"
+                      step="0.01"
+                      value={form.changeAmount}
+                      onChange={(e) => update("changeAmount", e.target.value)}
+                      placeholder="0.00"
+                    />
+                  </div>
+                </>
               )}
+              <fieldset>
+                <legend className="mb-2 text-sm font-semibold">ช่องทางการชำระเงิน</legend>
+                <div className="grid grid-cols-2 gap-2">
+                  {["cash", "transfer"].map((method) => (
+                    <button
+                      type="button"
+                      key={method}
+                      aria-pressed={form.paymentMethod === method}
+                      onClick={() => update("paymentMethod", method)}
+                      className={`rounded-lg border px-3 py-2.5 text-sm font-medium ${
+                        form.paymentMethod === method ? "border-blue-600 bg-blue-600 text-white" : "border-paperLine bg-white text-inkSoft"
+                      }`}
+                    >
+                      {method === "cash" ? "เงินสด" : "โอนเงิน"}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+              {form.type === "expense" && (
+                <div>
+                  <label className="mb-1 block text-sm">รูปเงินทอน (ถ้ามี)</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    aria-label="เลือกรูปเงินทอน"
+                    onChange={(e) => handleChangePhotoSelect(e.target.files?.[0] || null)}
+                    className="w-full rounded-lg border border-paperLine bg-white p-3 text-sm"
+                  />
+                  {changePhoto && <p className="mt-1 text-xs text-green-700">พร้อมแนบ (~{changePhoto.kb} KB)</p>}
+                </div>
+              )}
+              <div>
+                <label htmlFor="transaction-note" className="mb-1 block text-sm">หมายเหตุเพิ่มเติม</label>
+                <Textarea
+                  id="transaction-note"
+                  value={form.note}
+                  onChange={(e) => update("note", e.target.value)}
+                  rows={3}
+                />
+              </div>
             </div>
-          )}
+          </details>
 
           {totalPhotoKb > TOTAL_PHOTO_KB_WARNING && (
-            <p className="text-xs text-amber">
-              * รูปที่แนบรวมกันมีขนาดค่อนข้างใหญ่ (~{totalPhotoKb} KB) ถ้าบันทึกไม่สำเร็จ ลองลดจำนวนรูปดู
+            <p className="text-sm text-amber" role="status">
+              รูปที่แนบมีขนาดรวมค่อนข้างใหญ่ (~{totalPhotoKb} KB) หากบันทึกไม่สำเร็จ ลองลดจำนวนรูป
             </p>
           )}
+          {error && <p className="text-sm text-red-600" role="alert">{error}</p>}
 
-          <div>
-            <label className="text-sm text-inkSoft block mb-1">หมายเหตุเพิ่มเติม</label>
-            <textarea
-              value={form.note}
-              onChange={(e) => update("note", e.target.value)}
-              rows={2}
-              className="w-full border border-paperLine rounded px-3 py-2 focus:border-teal"
-            />
-          </div>
-
-          {error && <p className="text-sm text-rust">{error}</p>}
-
-          <button
-            type="submit"
-            disabled={busy || compressing}
-            className="w-full bg-teal text-white rounded py-2.5 font-medium hover:bg-teal-dark disabled:opacity-60"
-          >
-            {compressing ? "กำลังบีบอัดรูป..." : busy ? "กำลังบันทึก..." : "บันทึกรายการ"}
-          </button>
         </form>
-      </div>
+      </Card>
+      <Sheet
+        open={categoryPickerOpen}
+        title="เลือกหมวดหมู่"
+        onClose={() => {
+          setCategoryPickerOpen(false);
+          setCategorySearch("");
+        }}
+        footer={
+          <div className="flex justify-between gap-2">
+            <button type="button" onClick={() => update("category", "")} className="min-h-11 rounded-lg border border-paperLine px-4 text-sm">
+              ล้างหมวดหมู่
+            </button>
+            <button type="button" onClick={() => setCategoryPickerOpen(false)} className="min-h-11 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white">
+              เสร็จสิ้น
+            </button>
+          </div>
+        }
+      >
+        <Input
+          autoFocus
+          value={categorySearch}
+          onChange={(event) => setCategorySearch(event.target.value)}
+          placeholder="ค้นหาหมวดหมู่"
+          aria-label="ค้นหาหมวดหมู่"
+          className="mb-3"
+        />
+        <div className="grid gap-2 sm:grid-cols-2">
+          {categories
+            .filter((category) => category.label.toLowerCase().includes(categorySearch.trim().toLowerCase()))
+            .map((category) => (
+              <button
+                key={category.id}
+                type="button"
+                onClick={() => {
+                  update("category", category.label);
+                  setCategoryPickerOpen(false);
+                  setCategorySearch("");
+                }}
+                className={`min-h-11 rounded-lg border px-3 text-left text-sm ${
+                  form.category === category.label ? "border-blue-600 bg-blue-50 text-blue-700" : "border-paperLine"
+                }`}
+              >
+                {category.label}
+              </button>
+            ))}
+        </div>
+      </Sheet>
     </Layout>
   );
 }

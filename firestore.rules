@@ -7,207 +7,855 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function profilePath(uid) {
+      return /databases/$(database)/documents/users/$(uid);
+    }
+
+    function setupPath() {
+      return /databases/$(database)/documents/meta/setup;
+    }
+
+    function auditPath(auditId) {
+      return /databases/$(database)/documents/auditLogs/$(auditId);
+    }
+
+    function activityPath(activityId) {
+      return /databases/$(database)/documents/activityLogs/$(activityId);
+    }
+
+    function hasProfile() {
+      return isSignedIn() && exists(profilePath(request.auth.uid));
+    }
+
+    function profile() {
+      return get(profilePath(request.auth.uid)).data;
+    }
+
+    function isActiveUser() {
+      return hasProfile() && profile().get('disabled', false) != true;
+    }
+
     function role() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+      return profile().role;
     }
 
     function isOwner() {
-      return isSignedIn() && role() == 'owner';
+      return isActiveUser() && role() == 'owner';
+    }
+
+    function isStaff() {
+      return isActiveUser() && role() == 'staff';
+    }
+
+    function hasAnyRole(roles) {
+      return isActiveUser() && role() in roles;
     }
 
     function isApprovedUser() {
-      return isSignedIn() && (role() == 'owner' || role() == 'staff');
+      return hasAnyRole(['owner', 'staff']);
     }
 
-    // ผู้อ่าน (guest) รวมกับ owner/staff อ่านข้อมูลฝั่งเงินสด/กองทุน/รายงานได้ แต่สร้าง/แก้ไขไม่ได้
-    // และมองไม่เห็นโมดูลโอนจ่ายธนาคารเลย (โมดูลนั้นยังคงเช็คด้วย isOwner() เท่านั้น)
     function canReadCash() {
-      return isSignedIn() && (role() == 'owner' || role() == 'staff' || role() == 'guest');
+      return hasAnyRole(['owner', 'staff', 'guest']);
     }
 
-    // ---------- meta (ใช้เช็คว่ามีเจ้าของร้านคนแรกแล้วหรือยัง) ----------
+    function validUsername(username) {
+      return username is string &&
+        username.matches('^[a-z][a-z0-9._-]{2,23}$');
+    }
+
+    function validPositiveAmount(amount) {
+      return amount is number && amount > 0 && amount <= 1000000000;
+    }
+
+    function validNonNegativeAmount(amount) {
+      return amount is number && amount >= 0 && amount <= 1000000000;
+    }
+
+    function auditMatches(auditId, action, targetCollection, targetId, before, after) {
+      return auditId is string &&
+        existsAfter(auditPath(auditId)) &&
+        existsAfter(activityPath(auditId)) &&
+        getAfter(activityPath(auditId)).data == getAfter(auditPath(auditId)).data &&
+        getAfter(auditPath(auditId)).data.actorUid == request.auth.uid &&
+        getAfter(auditPath(auditId)).data.action == action &&
+        getAfter(auditPath(auditId)).data.targetCollection == targetCollection &&
+        getAfter(auditPath(auditId)).data.targetId == targetId &&
+        getAfter(auditPath(auditId)).data.before == before &&
+        getAfter(auditPath(auditId)).data.after == after &&
+        getAfter(auditPath(auditId)).data.createdAt == request.time;
+    }
+
+    function activeOwner(data) {
+      return data.role == 'owner' && data.get('disabled', false) != true;
+    }
+
+    function userOwnerCountTransitionValid(userId) {
+      let oldOwner = activeOwner(resource.data);
+      let newOwner = activeOwner(request.resource.data);
+      let setupBefore = get(setupPath()).data;
+      let setupAfter = getAfter(setupPath()).data;
+      return oldOwner == newOwner
+        ? setupAfter.get('ownerCount', null) == setupBefore.get('ownerCount', null)
+        : setupBefore.ownerCount is int &&
+          setupAfter.ownerCount is int &&
+          setupAfter.ownerChangeUserId == userId &&
+          setupAfter.ownerCount == setupBefore.ownerCount + (newOwner ? 1 : -1) &&
+          (newOwner || setupBefore.ownerCount > 1);
+    }
+
+    function validOwnerCountMutation() {
+      let targetId = request.resource.data.ownerChangeUserId;
+      let oldExists = exists(profilePath(targetId));
+      let oldOwner = oldExists && activeOwner(get(profilePath(targetId)).data);
+      let newProfile = getAfter(profilePath(targetId)).data;
+      let newOwner = activeOwner(newProfile);
+      return targetId is string &&
+        resource.data.ownerCount is int &&
+        request.resource.data.ownerCount is int &&
+        request.resource.data.ownerCount == resource.data.ownerCount + (newOwner ? 1 : -1) &&
+        (oldExists ? oldOwner != newOwner : newOwner) &&
+        (newOwner || resource.data.ownerCount > 1);
+    }
+
+    function validPhotoData(data) {
+      let photos = data.receiptPhotoURLs;
+      let receiptSize = photos[0].size() +
+        (photos.size() > 1 ? photos[1].size() : 0) +
+        (photos.size() > 2 ? photos[2].size() : 0);
+      let changeSize = data.changePhotoURL is string ? data.changePhotoURL.size() : 0;
+      let signatureSize = data.keys().hasAny(['approvalSignatureURL']) &&
+        data.approvalSignatureURL is string ? data.approvalSignatureURL.size() : 0;
+      return photos is list &&
+        photos.size() >= 1 && photos.size() <= 3 &&
+        photos[0] is string &&
+        photos[0].matches('^data:image/(jpeg|png);base64,[A-Za-z0-9+/=]+$') &&
+        photos[0].size() <= 175000 &&
+        (photos.size() < 2 || (photos[1] is string &&
+          photos[1].matches('^data:image/(jpeg|png);base64,[A-Za-z0-9+/=]+$') &&
+          photos[1].size() <= 175000)) &&
+        (photos.size() < 3 || (photos[2] is string &&
+          photos[2].matches('^data:image/(jpeg|png);base64,[A-Za-z0-9+/=]+$') &&
+          photos[2].size() <= 175000)) &&
+        data.receiptPhotoURL == photos[0] &&
+        (data.changePhotoURL == null || (data.changePhotoURL is string &&
+          data.changePhotoURL.matches('^data:image/(jpeg|png);base64,[A-Za-z0-9+/=]+$') &&
+          changeSize <= 175000)) &&
+        (signatureSize == 0 || (data.approvalSignatureURL is string &&
+          data.approvalSignatureURL.matches('^data:image/(jpeg|png);base64,[A-Za-z0-9+/=]+$') &&
+          signatureSize <= 100000)) &&
+        data.receiptPhotoURL.size() + receiptSize + changeSize + signatureSize <= 900000;
+    }
+
+    function validTransaction(data) {
+      return data.keys().hasOnly([
+          'fundId', 'fundLabel', 'type', 'amount', 'withdrawnAmount',
+          'itemDescription', 'changeAmount', 'paymentMethod', 'category', 'note',
+          'receiptPhotoURL', 'receiptPhotoURLs', 'changePhotoURL', 'status',
+          'createdBy', 'createdByName', 'createdAt', 'updatedAt',
+          'reviewedBy', 'reviewedByName', 'reviewedAt', 'reviewNote',
+          'editHistory', 'approvalSignatureURL', 'auditLogId'
+        ]) &&
+        data.keys().hasAll([
+          'fundId', 'type', 'amount', 'itemDescription', 'changeAmount',
+          'paymentMethod', 'note', 'receiptPhotoURL', 'receiptPhotoURLs',
+          'status', 'createdBy', 'createdByName', 'createdAt', 'updatedAt',
+          'editHistory'
+        ]) &&
+        data.fundId is string &&
+        exists(/databases/$(database)/documents/funds/$(data.fundId)) &&
+        data.fundLabel is string && data.fundLabel.size() <= 200 &&
+        data.type in ['income', 'expense'] &&
+        validPositiveAmount(data.amount) &&
+        (data.withdrawnAmount == null || validNonNegativeAmount(data.withdrawnAmount)) &&
+        data.itemDescription is string && data.itemDescription.size() > 0 &&
+        data.itemDescription.size() <= 1000 &&
+        validNonNegativeAmount(data.changeAmount) &&
+        data.paymentMethod in ['cash', 'transfer'] &&
+        data.category is string && data.category.size() <= 200 &&
+        data.note is string && data.note.size() <= 2000 &&
+        data.status == 'pending' &&
+        data.createdBy is string &&
+        data.createdByName is string && data.createdByName.size() <= 200 &&
+        data.createdAt is timestamp &&
+        data.updatedAt == request.time &&
+        data.editHistory is list && data.editHistory.size() == 0 &&
+        validPhotoData(data);
+    }
+
+    function validTransactionEditHistory() {
+      let oldHistory = resource.data.editHistory;
+      let newHistory = request.resource.data.editHistory;
+      return oldHistory is list &&
+        newHistory is list &&
+        newHistory.size() == oldHistory.size() + 1 &&
+        newHistory[newHistory.size() - 1].editedBy == request.auth.uid &&
+        newHistory[newHistory.size() - 1].reason is string &&
+        newHistory[newHistory.size() - 1].reason.size() > 0 &&
+        newHistory[newHistory.size() - 1].reason.size() <= 1000;
+    }
+
+    function validEditableTransactionFields() {
+      return validPositiveAmount(request.resource.data.amount) &&
+        (request.resource.data.withdrawnAmount == null ||
+          validNonNegativeAmount(request.resource.data.withdrawnAmount)) &&
+        request.resource.data.itemDescription is string &&
+        request.resource.data.itemDescription.size() > 0 &&
+        request.resource.data.itemDescription.size() <= 1000 &&
+        validNonNegativeAmount(request.resource.data.changeAmount) &&
+        request.resource.data.paymentMethod in ['cash', 'transfer'] &&
+        request.resource.data.note is string &&
+        request.resource.data.note.size() <= 2000;
+    }
+
+    function validWithdrawal(data) {
+      return data.keys().hasOnly([
+          'requestNo', 'sourceAccountId', 'sourceAccountLabel', 'date', 'note',
+          'lines', 'totalAmount', 'createdAt', 'createdBy', 'createdByName',
+          'updatedAt'
+        ]) &&
+        data.keys().hasAll([
+          'requestNo', 'sourceAccountId', 'sourceAccountLabel', 'date', 'note',
+          'lines', 'totalAmount', 'createdAt', 'createdBy', 'createdByName',
+          'updatedAt'
+        ]) &&
+        data.requestNo is string &&
+        data.sourceAccountId is string &&
+        exists(/databases/$(database)/documents/bankAccounts/$(data.sourceAccountId)) &&
+        data.sourceAccountLabel is string && data.sourceAccountLabel.size() <= 300 &&
+        data.date is string && data.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+        data.note is string && data.note.size() <= 2000 &&
+        data.lines is list && data.lines.size() > 0 &&
+        data.totalAmount is number && data.totalAmount >= 0 &&
+        data.totalAmount <= 1000000000 &&
+        data.createdAt == request.time &&
+        data.createdBy is string &&
+        data.createdByName is string && data.createdByName.size() <= 200 &&
+        data.updatedAt == request.time;
+    }
+
+    function validTransferPayment(data) {
+      return data.keys().hasOnly([
+          'transferNo', 'sourceAccountId', 'sourceAccountLabel',
+          'linkedWithdrawalRequestId', 'linkedWithdrawalRequestNo', 'lines',
+          'createdAt', 'createdBy', 'createdByName', 'updatedAt'
+        ]) &&
+        data.keys().hasAll([
+          'transferNo', 'sourceAccountId', 'sourceAccountLabel',
+          'linkedWithdrawalRequestId', 'linkedWithdrawalRequestNo', 'lines',
+          'createdAt', 'createdBy', 'createdByName', 'updatedAt'
+        ]) &&
+        data.transferNo is string &&
+        data.sourceAccountId is string &&
+        exists(/databases/$(database)/documents/bankAccounts/$(data.sourceAccountId)) &&
+        data.sourceAccountLabel is string && data.sourceAccountLabel.size() <= 300 &&
+        data.linkedWithdrawalRequestId is string &&
+        exists(/databases/$(database)/documents/withdrawalRequests/$(data.linkedWithdrawalRequestId)) &&
+        data.linkedWithdrawalRequestNo is string &&
+        data.lines is list && data.lines.size() > 0 &&
+        data.createdAt is timestamp &&
+        data.createdBy is string &&
+        data.createdByName is string && data.createdByName.size() <= 200 &&
+        data.updatedAt == request.time;
+    }
+
+    function auditHasFields(data) {
+      return data.keys().hasOnly([
+          'actorUid', 'actorName', 'action', 'targetCollection', 'targetId',
+          'before', 'after', 'createdAt'
+        ]) &&
+        data.keys().hasAll([
+          'actorUid', 'actorName', 'action', 'targetCollection', 'targetId',
+          'before', 'after', 'createdAt'
+        ]) &&
+        data.actorUid == request.auth.uid &&
+        data.actorName is string && data.actorName.size() <= 200 &&
+        data.targetCollection is string &&
+        data.targetId is string &&
+        data.createdAt == request.time;
+    }
+
+    function validTransactionAudit(auditId) {
+      let targetId = request.resource.data.targetId;
+      let before = request.resource.data.before;
+      let after = request.resource.data.after;
+      let oldTx = get(/databases/$(database)/documents/transactions/$(targetId)).data;
+      let newTx = getAfter(/databases/$(database)/documents/transactions/$(targetId)).data;
+      return request.resource.data.action == 'transaction-status-changed' &&
+        request.resource.data.targetCollection == 'transactions' &&
+        before == { 'status': oldTx.status } &&
+        after == { 'status': newTx.status } &&
+        newTx.auditLogId == auditId &&
+        newTx.status != oldTx.status;
+    }
+
+    function validUserAudit(auditId) {
+      let targetId = request.resource.data.targetId;
+      let before = request.resource.data.before;
+      let after = request.resource.data.after;
+      let newUser = getAfter(profilePath(targetId)).data;
+      return request.resource.data.targetCollection == 'users' &&
+        newUser.auditLogId == auditId &&
+        after == { 'role': newUser.role, 'disabled': newUser.disabled == true } &&
+        (
+          (request.resource.data.action == 'user-created' &&
+            !exists(profilePath(targetId)) &&
+            before == null)
+          ||
+          (request.resource.data.action in ['role-changed', 'user-disabled', 'user-enabled'] &&
+            exists(profilePath(targetId)) &&
+            before == {
+              'role': get(profilePath(targetId)).data.role,
+              'disabled': get(profilePath(targetId)).data.get('disabled', false) == true
+            } &&
+            before != after)
+        );
+    }
+
+    function validFundAudit(auditId) {
+      let targetId = request.resource.data.targetId;
+      let before = request.resource.data.before;
+      let after = request.resource.data.after;
+      let fundPath = /databases/$(database)/documents/funds/$(targetId);
+      let newFund = getAfter(fundPath).data;
+      return request.resource.data.targetCollection == 'funds' &&
+        newFund.auditLogId == auditId &&
+        after == { 'label': newFund.label, 'openingBalance': newFund.openingBalance } &&
+        (
+          (request.resource.data.action == 'fund-created' &&
+            !exists(fundPath) && before == null)
+          ||
+          (request.resource.data.action == 'fund-updated' &&
+            exists(fundPath) &&
+            before == {
+              'label': get(fundPath).data.label,
+              'openingBalance': get(fundPath).data.openingBalance
+            } &&
+            before != after)
+        );
+    }
+
+    function validTopupAudit(auditId) {
+      let targetId = request.resource.data.targetId;
+      let topupPath = /databases/$(database)/documents/fundTopups/$(targetId);
+      let topup = getAfter(topupPath).data;
+      return request.resource.data.action == 'fund-topup-created' &&
+        request.resource.data.targetCollection == 'fundTopups' &&
+        !exists(topupPath) &&
+        topup.auditLogId == auditId &&
+        request.resource.data.before == null &&
+        request.resource.data.after == {
+          'fundId': topup.fundId,
+          'amount': topup.amount
+        };
+    }
+
+    function validWithdrawalDeleteAudit(auditId) {
+      let targetId = request.resource.data.targetId;
+      let targetPath = /databases/$(database)/documents/withdrawalRequests/$(targetId);
+      return request.resource.data.action == 'withdrawal-deleted' &&
+        request.resource.data.targetCollection == 'withdrawalRequests' &&
+        auditId == 'delete-withdrawal-' + targetId &&
+        exists(targetPath) &&
+        !existsAfter(targetPath) &&
+        request.resource.data.before == get(targetPath).data &&
+        request.resource.data.after == null;
+    }
+
+    function validPaymentDeleteAudit(auditId) {
+      let targetId = request.resource.data.targetId;
+      let targetPath = /databases/$(database)/documents/transferPayments/$(targetId);
+      return request.resource.data.action == 'transfer-payment-deleted' &&
+        request.resource.data.targetCollection == 'transferPayments' &&
+        auditId == 'delete-payment-' + targetId &&
+        exists(targetPath) &&
+        !existsAfter(targetPath) &&
+        request.resource.data.before == get(targetPath).data &&
+        request.resource.data.after == null;
+    }
+
     match /meta/setup {
-      // อ่านได้แม้ยังไม่ล็อกอิน เพราะต้องเช็คตอนหน้าสมัครสมาชิกก่อนสร้างบัญชีด้วยซ้ำ
-      allow read: if true;
-      // สร้างได้ครั้งเดียวตอนบัญชีแรกของระบบสมัครสำเร็จ (ดู users create rule ด้านล่าง)
-      allow create: if isSignedIn();
-      allow update, delete: if false;
-    }
+      allow get: if true;
+      allow list: if false;
 
-    // ---------- users ----------
-    match /users/{userId} {
-      // สร้างเอกสารได้ 2 กรณี:
-      // 1) สมัครสมาชิกด้วยตัวเอง (self-registration) — เริ่มที่ pending เสมอ
-      //    ยกเว้นเป็นคนแรกสุดของระบบ (ยังไม่มีเอกสาร meta/setup) จะตั้งตัวเองเป็น owner ได้ทันที
-      //    เพื่อไม่ต้องเข้า Firebase Console ไปแก้ role ด้วยมือทุกครั้งที่ตั้งระบบใหม่
-      // 2) เจ้าของร้านเพิ่มพนักงาน/ผู้อ่านให้โดยตรงจากหน้า "ผู้ใช้งาน" — ไม่ต้องรอ pending
-      //    ตั้ง role ให้ตรงได้เลยตั้งแต่สร้าง (staff/guest/owner)
-      allow create: if isSignedIn() && (
-        (request.auth.uid == userId && (
-          request.resource.data.role == 'pending' ||
-          (request.resource.data.role == 'owner' &&
-            !exists(/databases/$(database)/documents/meta/setup))
-        ))
-        ||
-        (isOwner() && request.resource.data.role in ['staff', 'guest', 'owner'])
-      );
+      allow create: if isSignedIn() &&
+        !exists(setupPath()) &&
+        request.resource.data.ownerUid == request.auth.uid &&
+        request.resource.data.ownerCount == 1 &&
+        request.resource.data.loginMode == 'username' &&
+        request.resource.data.ownerBootstrappedAt == request.time &&
+        getAfter(profilePath(request.auth.uid)).data.role == 'owner' &&
+        getAfter(profilePath(request.auth.uid)).data.username is string;
 
-      // อ่านได้เฉพาะเจ้าของบัญชีเอง หรือ owner (เพื่อจัดการสิทธิ์/แสดงชื่อผู้บันทึก)
-      allow read: if isSignedIn() && (request.auth.uid == userId || isOwner());
-
-      // เปลี่ยน role ได้เฉพาะ owner เท่านั้น ห้ามผู้ใช้ตั้ง role ให้ตัวเอง
-      allow update: if isOwner();
+      allow update: if isOwner() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'ownerCount', 'ownerChangeUserId', 'loginMode', 'loginModeUpdatedAt'
+        ]) &&
+        (
+          (!resource.data.keys().hasAny(['ownerCount']) &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ownerCount']) &&
+            request.resource.data.ownerCount is int &&
+            request.resource.data.ownerCount >= 1)
+          ||
+          (request.resource.data.ownerCount == resource.data.ownerCount &&
+            (
+              !request.resource.data.diff(resource.data).affectedKeys().hasAny(['loginMode']) ||
+              (resource.data.loginMode != 'username' &&
+                request.resource.data.loginMode == 'username' &&
+                request.resource.data.loginModeUpdatedAt == request.time)
+            ))
+          ||
+          validOwnerCountMutation()
+        );
 
       allow delete: if false;
     }
 
-    // ---------- transactions ----------
+    match /users/{userId} {
+      allow create: if isSignedIn() &&
+        request.resource.data.keys().hasOnly([
+          'name', 'username', 'role', 'disabled', 'createdAt',
+          'createdByOwner', 'auditLogId'
+        ]) &&
+        request.resource.data.keys().hasAll(['name', 'username', 'role', 'createdAt']) &&
+        request.resource.data.name is string &&
+        request.resource.data.name.size() > 0 &&
+        request.resource.data.name.size() <= 200 &&
+        validUsername(request.resource.data.username) &&
+        request.resource.data.createdAt == request.time &&
+        (!request.resource.data.keys().hasAny(['disabled']) || request.resource.data.disabled == false) &&
+        existsAfter(/databases/$(database)/documents/pinDirectory/$(request.resource.data.username)) &&
+        getAfter(/databases/$(database)/documents/pinDirectory/$(request.resource.data.username)).data.uid == userId &&
+        (
+          (request.auth.uid == userId &&
+            request.resource.data.role == 'pending' &&
+            getAfter(setupPath()).data.loginMode == 'username')
+          ||
+          (request.auth.uid == userId &&
+            request.resource.data.role == 'owner' &&
+            !exists(setupPath()) &&
+            getAfter(setupPath()).data.ownerUid == userId &&
+            getAfter(setupPath()).data.ownerCount == 1)
+          ||
+          (isOwner() &&
+            request.resource.data.role in ['staff', 'guest', 'owner'] &&
+            request.resource.data.createdByOwner == request.auth.uid &&
+            request.resource.data.auditLogId is string &&
+            auditMatches(
+              request.resource.data.auditLogId,
+              'user-created',
+              'users',
+              userId,
+              null,
+              { 'role': request.resource.data.role, 'disabled': false }
+            ) &&
+            (request.resource.data.role != 'owner' ||
+              (get(setupPath()).data.ownerCount is int &&
+                getAfter(setupPath()).data.ownerCount == get(setupPath()).data.ownerCount + 1 &&
+                getAfter(setupPath()).data.ownerChangeUserId == userId)))
+        );
+
+      allow get: if isSignedIn() &&
+        (request.auth.uid == userId || isOwner());
+      allow list: if isOwner();
+
+      allow update: if isOwner() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'username', 'pin', 'role', 'disabled', 'auditLogId'
+        ]) &&
+        (
+          (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['username', 'pin']) &&
+            (request.auth.uid != userId ||
+              (request.resource.data.role == resource.data.role &&
+                request.resource.data.get('disabled', false) ==
+                  resource.data.get('disabled', false))) &&
+            validUsername(request.resource.data.username) &&
+            resource.data.pin is string &&
+            !request.resource.data.keys().hasAny(['pin']) &&
+            existsAfter(/databases/$(database)/documents/pinDirectory/$(request.resource.data.username)) &&
+            getAfter(/databases/$(database)/documents/pinDirectory/$(request.resource.data.username)).data.uid == userId &&
+            !existsAfter(/databases/$(database)/documents/pinDirectory/$(resource.data.pin)) &&
+            get(/databases/$(database)/documents/pinDirectory/$(resource.data.pin)).data.uid == userId)
+          ||
+          (request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'role', 'disabled', 'auditLogId'
+            ]) &&
+            request.auth.uid != userId &&
+            request.resource.data.role in ['pending', 'staff', 'guest', 'owner'] &&
+            request.resource.data.disabled is bool &&
+            request.resource.data.auditLogId is string)
+        ) &&
+        (
+          request.resource.data.role == resource.data.role &&
+          request.resource.data.get('disabled', false) ==
+            resource.data.get('disabled', false) ||
+          (
+            userOwnerCountTransitionValid(userId) &&
+            auditMatches(
+              request.resource.data.auditLogId,
+              request.resource.data.disabled != resource.data.disabled
+                ? (request.resource.data.disabled ? 'user-disabled' : 'user-enabled')
+                : 'role-changed',
+              'users',
+              userId,
+              { 'role': resource.data.role, 'disabled': resource.data.get('disabled', false) == true },
+              { 'role': request.resource.data.role, 'disabled': request.resource.data.get('disabled', false) == true }
+            )
+          )
+        );
+
+      allow delete: if false;
+    }
+
     match /transactions/{txId} {
+      allow create: if isApprovedUser() &&
+        request.resource.data.createdBy == request.auth.uid &&
+        validTransaction(request.resource.data);
 
-      function coreFieldsUnchanged() {
-        return request.resource.data.amount == resource.data.amount &&
-          request.resource.data.withdrawnAmount == resource.data.withdrawnAmount &&
-          request.resource.data.itemDescription == resource.data.itemDescription &&
-          request.resource.data.changeAmount == resource.data.changeAmount &&
-          request.resource.data.paymentMethod == resource.data.paymentMethod &&
-          request.resource.data.note == resource.data.note;
-      }
-
-      function editHistoryGrewWithReason() {
-        let newLen = request.resource.data.editHistory.size();
-        return newLen == resource.data.editHistory.size() + 1 &&
-          request.resource.data.editHistory[newLen - 1].editedBy == request.auth.uid &&
-          request.resource.data.editHistory[newLen - 1].reason is string &&
-          request.resource.data.editHistory[newLen - 1].reason.size() > 0;
-      }
-
-      // สร้างรายการใหม่ได้เฉพาะผู้ใช้ที่ได้รับอนุมัติ ต้องระบุตัวเองเป็นผู้สร้าง
-      // เริ่มที่สถานะ pending เสมอ และห้ามใส่ประวัติแก้ไขมาตั้งแต่แรก
-      allow create: if isApprovedUser()
-        && request.resource.data.createdBy == request.auth.uid
-        && request.resource.data.status == 'pending'
-        && request.resource.data.editHistory.size() == 0
-        && request.resource.data.fundId is string;
-
-      // อ่านได้เฉพาะเจ้าของรายการ, owner (เห็นทุกรายการเพื่อกำกับดูแล), หรือใครก็ตามที่อ่านข้อมูลฝั่งเงินสดได้
-      // และรายการนั้นอนุมัติแล้ว (โปร่งใสให้ staff/guest เห็นภาพรวมเงินหมุนเวียนได้ แต่ไม่เห็นรายการที่ยังไม่ผ่านตรวจสอบของคนอื่น)
       allow read: if canReadCash() &&
-        (isOwner() || resource.data.createdBy == request.auth.uid || resource.data.status == 'approved');
+        (isOwner() ||
+          resource.data.createdBy == request.auth.uid ||
+          resource.data.status == 'approved');
 
-      allow update: if isSignedIn() && (
-        // 1) owner ตรวจสอบอนุมัติ/ตีกลับ/ยกเลิก — แก้ได้เฉพาะสถานะและหมายเหตุตรวจสอบ ห้ามแตะตัวเลข/รายละเอียด
-        //    อนุมัติสำเร็จ (เบิกได้จริง) ได้ก็ต่อเมื่อมีลายเซ็นออนไลน์แนบมาด้วยเท่านั้น
-        (isOwner() && coreFieldsUnchanged() &&
-          request.resource.data.editHistory.size() == resource.data.editHistory.size() &&
+      allow update: if isOwner() &&
+          resource.data.status == 'pending' &&
+          request.resource.data.status in ['approved', 'rejected', 'voided'] &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'reviewedBy', 'reviewedByName', 'reviewedAt',
+            'reviewNote', 'approvalSignatureURL', 'updatedAt', 'auditLogId'
+          ]) &&
           request.resource.data.reviewedBy == request.auth.uid &&
-          request.resource.data.fundId == resource.data.fundId &&
-          (request.resource.data.status != 'approved' || request.resource.data.approvalSignatureURL is string))
+          request.resource.data.reviewedByName is string &&
+          request.resource.data.reviewedAt == request.time &&
+          request.resource.data.updatedAt == request.time &&
+          (request.resource.data.reviewNote == null ||
+            (request.resource.data.reviewNote is string &&
+              request.resource.data.reviewNote.size() <= 2000)) &&
+          (request.resource.data.status != 'approved' ||
+            (request.resource.data.approvalSignatureURL is string &&
+              request.resource.data.approvalSignatureURL.matches(
+                '^data:image/png;base64,[A-Za-z0-9+/=]+$'
+              ) &&
+              request.resource.data.approvalSignatureURL.size() <= 100000)) &&
+          auditMatches(
+            request.resource.data.auditLogId,
+            'transaction-status-changed',
+            'transactions',
+            txId,
+            { 'status': resource.data.status },
+            { 'status': request.resource.data.status }
+          )
         ||
-        // 2) owner แก้ไขข้อมูลย้อนหลัง — ต้องมีเหตุผลและถูกบันทึกลง audit trail เสมอ
         (isOwner() &&
           request.resource.data.status == resource.data.status &&
           request.resource.data.createdBy == resource.data.createdBy &&
           request.resource.data.createdAt == resource.data.createdAt &&
-          request.resource.data.receiptPhotoURL == resource.data.receiptPhotoURL &&
           request.resource.data.fundId == resource.data.fundId &&
-          editHistoryGrewWithReason())
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'amount', 'withdrawnAmount', 'itemDescription', 'changeAmount',
+            'paymentMethod', 'note', 'updatedAt', 'editHistory'
+          ]) &&
+          request.resource.data.updatedAt == request.time &&
+          validEditableTransactionFields() &&
+          validTransactionEditHistory())
         ||
-        // 3) พนักงานแก้ไขรายการของตัวเองได้เฉพาะตอนยังไม่ถูกตรวจสอบ (pending)
-        //    ห้ามแตะสถานะ วันที่สร้าง หรือรูปหลักฐาน ต้องมีเหตุผลทุกครั้ง
-        (isApprovedUser() && role() == 'staff' &&
+        (isStaff() &&
           resource.data.createdBy == request.auth.uid &&
           resource.data.status == 'pending' &&
           request.resource.data.status == 'pending' &&
           request.resource.data.createdBy == resource.data.createdBy &&
           request.resource.data.createdAt == resource.data.createdAt &&
-          request.resource.data.receiptPhotoURL == resource.data.receiptPhotoURL &&
-          request.resource.data.changePhotoURL == resource.data.changePhotoURL &&
           request.resource.data.fundId == resource.data.fundId &&
-          editHistoryGrewWithReason())
-      );
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'amount', 'withdrawnAmount', 'itemDescription', 'changeAmount',
+            'paymentMethod', 'note', 'updatedAt', 'editHistory'
+          ]) &&
+          request.resource.data.updatedAt == request.time &&
+          validEditableTransactionFields() &&
+          validTransactionEditHistory());
 
-      // ห้ามลบรายการถาวรโดยเด็ดขาด แม้แต่ owner — ใช้สถานะ "voided" แทนเพื่อรักษาประวัติทั้งหมด
       allow delete: if false;
     }
 
-    // ---------- funds (เงินหมุนเวียนแต่ละฝั่ง เช่น หน้าร้าน / ออกส่งสินค้าและเบี้ยเลี้ยง) ----------
     match /funds/{fundId} {
-      // ทุกคนที่อ่านข้อมูลฝั่งเงินสดได้ (staff/owner/guest) อ่านได้ แต่สร้าง/แก้ได้เฉพาะ owner
       allow read: if canReadCash();
-      allow create: if isOwner() && request.resource.data.openingBalance is number;
-      allow update: if isOwner();
+
+      allow create: if isOwner() &&
+        request.resource.data.keys().hasOnly([
+          'label', 'openingBalance', 'createdAt', 'auditLogId'
+        ]) &&
+        request.resource.data.label is string &&
+        request.resource.data.label.size() > 0 &&
+        request.resource.data.label.size() <= 200 &&
+        validNonNegativeAmount(request.resource.data.openingBalance) &&
+        request.resource.data.createdAt == request.time &&
+        request.resource.data.auditLogId is string &&
+        auditMatches(
+          request.resource.data.auditLogId,
+          'fund-created',
+          'funds',
+          fundId,
+          null,
+          {
+            'label': request.resource.data.label,
+            'openingBalance': request.resource.data.openingBalance
+          }
+        );
+
+      allow update: if isOwner() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'label', 'openingBalance', 'auditLogId'
+        ]) &&
+        request.resource.data.label is string &&
+        request.resource.data.label.size() > 0 &&
+        request.resource.data.label.size() <= 200 &&
+        validNonNegativeAmount(request.resource.data.openingBalance) &&
+        request.resource.data.auditLogId is string &&
+        auditMatches(
+          request.resource.data.auditLogId,
+          'fund-updated',
+          'funds',
+          fundId,
+          { 'label': resource.data.label, 'openingBalance': resource.data.openingBalance },
+          {
+            'label': request.resource.data.label,
+            'openingBalance': request.resource.data.openingBalance
+          }
+        );
+
       allow delete: if false;
     }
 
-    // ---------- fundTopups (การคีย์เงินรับเข้ากองทุนหมุนเวียน) ----------
     match /fundTopups/{topupId} {
       allow read: if canReadCash();
-      // เติมเงินเข้ากองทุนได้เฉพาะ owner เท่านั้น และต้องระบุตัวเองเป็นผู้บันทึก
-      allow create: if isOwner()
-        && request.resource.data.createdBy == request.auth.uid
-        && request.resource.data.amount is number
-        && request.resource.data.amount > 0;
+      allow create: if isOwner() &&
+        request.resource.data.keys().hasOnly([
+          'fundId', 'amount', 'note', 'createdBy', 'createdByName',
+          'createdAt', 'auditLogId'
+        ]) &&
+        request.resource.data.fundId is string &&
+        exists(/databases/$(database)/documents/funds/$(request.resource.data.fundId)) &&
+        validPositiveAmount(request.resource.data.amount) &&
+        request.resource.data.note is string &&
+        request.resource.data.note.size() <= 2000 &&
+        request.resource.data.createdBy == request.auth.uid &&
+        request.resource.data.createdByName is string &&
+        request.resource.data.createdByName.size() <= 200 &&
+        request.resource.data.createdAt == request.time &&
+        request.resource.data.auditLogId is string &&
+        auditMatches(
+          request.resource.data.auditLogId,
+          'fund-topup-created',
+          'fundTopups',
+          topupId,
+          null,
+          { 'fundId': request.resource.data.fundId, 'amount': request.resource.data.amount }
+        );
+      allow update, delete: if false;
+    }
+
+    match /cashCategories/{categoryId} {
+      allow read: if canReadCash();
+      allow create: if isOwner() &&
+        request.resource.data.keys().hasOnly(['label', 'createdAt']) &&
+        request.resource.data.label is string &&
+        request.resource.data.label.size() > 0 &&
+        request.resource.data.label.size() <= 200 &&
+        request.resource.data.createdAt == request.time;
       allow update: if false;
+      allow delete: if isOwner();
+    }
+
+    match /counters/{counterId} {
+      allow get: if isApprovedUser();
+      allow list: if false;
+      allow create, update: if isApprovedUser() &&
+        counterId in ['withdrawalRequests', 'transferPayments'] &&
+        request.resource.data.keys().hasOnly(['seq', 'updatedAt']) &&
+        request.resource.data.seq is int &&
+        request.resource.data.seq > 0 &&
+        request.resource.data.updatedAt == request.time &&
+        (!exists(/databases/$(database)/documents/counters/$(counterId)) ||
+          request.resource.data.seq == resource.data.seq + 1);
       allow delete: if false;
     }
 
-    // ---------- cashCategories (หมวดหมู่โปรดสำหรับรายการเงินสดทั่วไป ใช้ตอนบันทึกรายรับ-จ่าย) ----------
-    match /cashCategories/{categoryId} {
-      allow read: if canReadCash();
-      allow write: if isOwner();
-    }
-
-    // ---------- โมดูลโอนจ่ายผ่านธนาคาร ----------
-    // หมายเหตุ: "ใบเบิกเงินโอน" (withdrawalRequests) เปิดให้พนักงาน (staff) เข้าถึงได้ด้วย
-    // (สร้าง + ดูทุกใบ + แก้ไข/ลบเฉพาะใบของตัวเอง) ส่วน "ใบโอนจ่าย" (transferPayments) และ
-    // การจัดการบัญชีธนาคาร/หมวดหมู่ ยังคงเป็นสิทธิ์เจ้าของร้านเท่านั้นเหมือนเดิม
-
-    // เลขที่เอกสารรันอัตโนมัติ (ใบเบิก / ใบโอนจ่าย) — พนักงานต้องอ่าน/เขียนได้ด้วยตอนสร้างใบเบิก
-    match /counters/{counterId} {
-      allow read, write: if isApprovedUser();
-    }
-
-    // บัญชีธนาคารโปรด ทั้งฝั่งบัญชีของเรา (source) และบัญชีผู้รับโอน (payee)
-    // พนักงานอ่านได้ (ต้องเลือกบัญชีตอนสร้างใบเบิก) แต่เพิ่ม/แก้/ลบได้เฉพาะ owner
     match /bankAccounts/{accountId} {
       allow read: if isApprovedUser();
-      allow write: if isOwner();
+      allow create: if isOwner() &&
+        request.resource.data.keys().hasOnly([
+          'side', 'bankName', 'accountNumber', 'accountName', 'note',
+          'createdAt', 'createdBy'
+        ]) &&
+        request.resource.data.side in ['source', 'payee'] &&
+        request.resource.data.bankName is string &&
+        request.resource.data.accountNumber is string &&
+        request.resource.data.accountName is string &&
+        request.resource.data.note is string &&
+        request.resource.data.createdBy == request.auth.uid &&
+        request.resource.data.createdAt == request.time;
+      allow update: if false;
+      allow delete: if isOwner();
     }
 
-    // หมวดหมู่โปรดสำหรับรายการในใบเบิก — พนักงานอ่านได้ แก้ได้เฉพาะ owner
     match /transferCategories/{categoryId} {
       allow read: if isApprovedUser();
-      allow write: if isOwner();
-    }
-
-    // ใบเบิกเงินโอน (เงินเข้าบัญชี A ก่อนนำไปจ่ายออก)
-    match /withdrawalRequests/{requestId} {
-      // owner เห็นทุกใบ / พนักงานเห็นทุกใบเช่นกัน (ให้เห็นภาพรวมว่าใครเบิกอะไรไปบ้าง)
-      allow read: if isApprovedUser();
-      // สร้างได้ทั้ง owner และ staff แต่ต้องระบุตัวเองเป็นผู้สร้างเสมอ
-      allow create: if isApprovedUser() && request.resource.data.createdBy == request.auth.uid;
-      // แก้ไข/ลบได้เฉพาะ owner หรือเจ้าของใบเบิกนั้นเอง (พนักงานแก้ของคนอื่นไม่ได้)
-      allow update, delete: if isOwner() ||
-        (isApprovedUser() && resource.data.createdBy == request.auth.uid);
-    }
-
-    // ใบโอนจ่าย (เงินออกจากบัญชี A ไปยังบัญชี B ตัดยอดกับใบเบิก) — เจ้าของร้านเท่านั้น ไม่เกี่ยวกับพนักงาน
-    match /transferPayments/{paymentId} {
-      allow read, write: if isOwner();
-    }
-    // ---------- pinDirectory (ผูก PIN -> บัญชี เพื่อให้หน้า Login ค้นหาอีเมลจาก PIN ได้ก่อนล็อกอิน) ----------
-    match /pinDirectory/{pin} {
-      // อ่านแบบระบุ PIN ตรงๆ ได้แม้ยังไม่ล็อกอิน (จำเป็นสำหรับหน้า Login) แต่ห้าม list ทั้ง collection
-      // เพื่อไม่ให้ใครดึงรายชื่อ PIN ที่ถูกใช้ไปแล้วทั้งหมดออกไปได้
-      allow get: if true;
-      allow list: if false;
-      // สร้างได้เฉพาะการผูก PIN เข้ากับบัญชีของตัวเอง (ตอนสมัคร หรือตอนเปลี่ยน PIN)
-      // หรือ owner สร้างให้พนักงาน/ผู้อ่านที่เพิ่มเข้าระบบโดยตรงจากหน้า "ผู้ใช้งาน"
-      // ถ้า PIN นั้นมีเจ้าของอยู่แล้ว คำขอนี้จะถูกตีความเป็น "update" ซึ่งไม่มี rule อนุญาต จึงถูกปฏิเสธอัตโนมัติ (กัน PIN ซ้ำ)
-      allow create: if isSignedIn() && (request.resource.data.uid == request.auth.uid || isOwner());
-      // ลบได้เฉพาะเจ้าของ PIN นั้นเอง (ใช้ตอนเปลี่ยน PIN ใหม่ ต้องลบอันเก่าทิ้ง)
-      allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+      allow create: if isOwner() &&
+        request.resource.data.keys().hasOnly(['label', 'createdAt']) &&
+        request.resource.data.label is string &&
+        request.resource.data.label.size() > 0 &&
+        request.resource.data.label.size() <= 200 &&
+        request.resource.data.createdAt == request.time;
       allow update: if false;
+      allow delete: if isOwner();
+    }
+
+    match /withdrawalRequests/{requestId} {
+      allow read: if isApprovedUser();
+      allow create: if isApprovedUser() &&
+        request.resource.data.createdBy == request.auth.uid &&
+        validWithdrawal(request.resource.data) &&
+        request.resource.data.createdAt == request.time;
+      allow update: if isOwner() &&
+          request.resource.data.createdBy == resource.data.createdBy &&
+          request.resource.data.createdAt == resource.data.createdAt &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'sourceAccountId', 'sourceAccountLabel', 'date', 'note',
+            'lines', 'totalAmount', 'updatedAt'
+          ]) &&
+          validWithdrawal(request.resource.data) &&
+          request.resource.data.createdAt == resource.data.createdAt
+        ||
+        (isStaff() &&
+          resource.data.createdBy == request.auth.uid &&
+          request.resource.data.createdBy == resource.data.createdBy &&
+          request.resource.data.createdAt == resource.data.createdAt &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'sourceAccountId', 'sourceAccountLabel', 'date', 'note',
+            'lines', 'totalAmount', 'updatedAt'
+          ]) &&
+          validWithdrawal(request.resource.data) &&
+          request.resource.data.createdAt == resource.data.createdAt);
+      allow delete: if (isOwner() ||
+          (isStaff() && resource.data.createdBy == request.auth.uid)) &&
+        existsAfter(auditPath('delete-withdrawal-' + requestId)) &&
+        existsAfter(activityPath('delete-withdrawal-' + requestId)) &&
+        getAfter(activityPath('delete-withdrawal-' + requestId)).data ==
+          getAfter(auditPath('delete-withdrawal-' + requestId)).data &&
+        getAfter(auditPath('delete-withdrawal-' + requestId)).data.actorUid == request.auth.uid &&
+        getAfter(auditPath('delete-withdrawal-' + requestId)).data.action == 'withdrawal-deleted' &&
+        getAfter(auditPath('delete-withdrawal-' + requestId)).data.targetCollection == 'withdrawalRequests' &&
+        getAfter(auditPath('delete-withdrawal-' + requestId)).data.targetId == requestId &&
+        getAfter(auditPath('delete-withdrawal-' + requestId)).data.before == resource.data &&
+        getAfter(auditPath('delete-withdrawal-' + requestId)).data.after == null &&
+        getAfter(auditPath('delete-withdrawal-' + requestId)).data.createdAt == request.time;
+    }
+
+    match /transferPayments/{paymentId} {
+      allow read: if isOwner();
+      allow create: if isOwner() &&
+        request.resource.data.createdBy == request.auth.uid &&
+        validTransferPayment(request.resource.data) &&
+        request.resource.data.createdAt == request.time;
+      allow update: if isOwner() &&
+        request.resource.data.createdBy == resource.data.createdBy &&
+        request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'sourceAccountId', 'sourceAccountLabel', 'linkedWithdrawalRequestId',
+          'linkedWithdrawalRequestNo', 'lines', 'updatedAt'
+        ]) &&
+        validTransferPayment(request.resource.data) &&
+        request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isOwner() &&
+        existsAfter(auditPath('delete-payment-' + paymentId)) &&
+        existsAfter(activityPath('delete-payment-' + paymentId)) &&
+        getAfter(activityPath('delete-payment-' + paymentId)).data ==
+          getAfter(auditPath('delete-payment-' + paymentId)).data &&
+        getAfter(auditPath('delete-payment-' + paymentId)).data.actorUid == request.auth.uid &&
+        getAfter(auditPath('delete-payment-' + paymentId)).data.action == 'transfer-payment-deleted' &&
+        getAfter(auditPath('delete-payment-' + paymentId)).data.targetCollection == 'transferPayments' &&
+        getAfter(auditPath('delete-payment-' + paymentId)).data.targetId == paymentId &&
+        getAfter(auditPath('delete-payment-' + paymentId)).data.before == resource.data &&
+        getAfter(auditPath('delete-payment-' + paymentId)).data.after == null &&
+        getAfter(auditPath('delete-payment-' + paymentId)).data.createdAt == request.time;
+    }
+
+    match /pinDirectory/{loginId} {
+      allow get: if validUsername(loginId) ||
+        (loginId.matches('^[0-9]{4,6}$') &&
+          (!exists(setupPath()) ||
+            get(setupPath()).data.get('loginMode', 'pin') != 'username' ||
+            isOwner()));
+      allow list: if false;
+
+      allow create: if isSignedIn() &&
+        request.resource.data.keys().hasOnly(['uid', 'email']) &&
+        request.resource.data.uid is string &&
+        request.resource.data.email is string &&
+        validUsername(loginId) &&
+        existsAfter(profilePath(request.resource.data.uid)) &&
+        getAfter(profilePath(request.resource.data.uid)).data.username == loginId &&
+        (request.auth.uid == request.resource.data.uid || isOwner());
+
+      allow update: if false;
+
+      allow delete: if isSignedIn() &&
+        resource.data.uid is string &&
+        (
+          (request.auth.uid == resource.data.uid && validUsername(loginId)) ||
+          (isOwner() && loginId.matches('^[0-9]{4,6}$'))
+        );
+    }
+
+    match /auditLogs/{auditId} {
+      allow get, list: if isOwner();
+
+      allow create: if isActiveUser() &&
+        auditHasFields(request.resource.data) &&
+        (
+          (request.resource.data.action == 'transaction-status-changed' &&
+            validTransactionAudit(auditId))
+          ||
+          (request.resource.data.action in [
+              'user-created', 'role-changed', 'user-disabled', 'user-enabled'
+            ] && validUserAudit(auditId))
+          ||
+          (request.resource.data.action in ['fund-created', 'fund-updated'] &&
+            validFundAudit(auditId))
+          ||
+          (request.resource.data.action == 'fund-topup-created' &&
+            validTopupAudit(auditId))
+          ||
+          (request.resource.data.action == 'withdrawal-deleted' &&
+            validWithdrawalDeleteAudit(auditId))
+          ||
+          (request.resource.data.action == 'transfer-payment-deleted' &&
+            validPaymentDeleteAudit(auditId))
+        );
+
+      allow update, delete: if false;
+    }
+
+    match /activityLogs/{activityId} {
+      allow get, list: if isOwner();
+
+      allow create: if isActiveUser() &&
+        auditHasFields(request.resource.data) &&
+        existsAfter(auditPath(activityId)) &&
+        getAfter(auditPath(activityId)).data == request.resource.data;
+
+      allow update, delete: if false;
+    }
+
+    match /dailyClosings/{closingId} {
+      allow get, list: if isOwner();
+
+      // Daily closings are created by the callable function after server-side validation.
+      allow create, update, delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

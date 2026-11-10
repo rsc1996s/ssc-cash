@@ -1,5 +1,11 @@
 import { initializeApp, deleteApp } from "firebase/app";
-import { getAuth, createUserWithEmailAndPassword, signOut } from "firebase/auth";
+import {
+  getAuth,
+  createUserWithEmailAndPassword,
+  deleteUser,
+  signInWithEmailAndPassword,
+  signOut,
+} from "firebase/auth";
 import { firebaseConfig } from "../firebase";
 
 /**
@@ -16,6 +22,17 @@ export async function createAccountWithoutSigningIn(email, password) {
     const uid = cred.user.uid;
     await signOut(tempAuth);
     return uid;
+  } finally {
+    await deleteApp(tempApp);
+  }
+}
+
+export async function deleteAccountWithoutSigningIn(email, password) {
+  const tempApp = initializeApp(firebaseConfig, `temp-delete-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const tempAuth = getAuth(tempApp);
+  try {
+    const cred = await signInWithEmailAndPassword(tempAuth, email, password);
+    await deleteUser(cred.user);
   } finally {
     await deleteApp(tempApp);
   }

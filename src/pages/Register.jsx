@@ -1,24 +1,34 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { createUserWithEmailAndPassword } from "firebase/auth";
-import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
+import { createUserWithEmailAndPassword, deleteUser } from "firebase/auth";
+import { doc, getDoc, serverTimestamp, writeBatch } from "firebase/firestore";
 import { auth, db } from "../firebase";
-import { pinToPassword, randomPinEmail, PIN_PATTERN } from "../lib/auth";
+import { pinToPassword, randomPinEmail, PIN_PATTERN, normalizeUsername, USERNAME_PATTERN } from "../lib/auth";
 import PinPad from "../components/PinPad";
+import FormHeader from "../components/ui/FormHeader";
+import { useFeedback } from "../components/ui/FeedbackProvider";
 
 export default function Register() {
   const [step, setStep] = useState(1); // 1: ชื่อ, 2: ตั้ง PIN, 3: ยืนยัน PIN
   const [name, setName] = useState("");
+  const [username, setUsername] = useState("");
   const [pin, setPin] = useState("");
   const [pinConfirm, setPinConfirm] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const navigate = useNavigate();
+  const { confirm, toast } = useFeedback();
 
   function goToPinStep(e) {
-    e.preventDefault();
+    e?.preventDefault();
     if (!name.trim()) {
       setError("กรุณากรอกชื่อ-นามสกุล");
+      document.querySelector('input[autocomplete="name"]')?.focus();
+      return;
+    }
+    if (!USERNAME_PATTERN.test(normalizeUsername(username))) {
+      setError("ชื่อผู้ใช้ต้องเป็นภาษาอังกฤษ/ตัวเลข 3-24 ตัว และขึ้นต้นด้วยตัวอักษร");
+      document.getElementById("register-username")?.focus();
       return;
     }
     setError("");
@@ -27,7 +37,7 @@ export default function Register() {
 
   function confirmFirstPin() {
     if (!PIN_PATTERN.test(pin)) {
-      setError("PIN ต้องเป็นตัวเลข 4-6 หลัก");
+      setError("PIN ต้องเป็นตัวเลข 6 หลัก");
       return;
     }
     setError("");
@@ -42,60 +52,104 @@ export default function Register() {
     }
     setError("");
     setBusy(true);
+    let createdUser = null;
     try {
-      const existing = await getDoc(doc(db, "pinDirectory", pin));
-      if (existing.exists()) {
-        setError("PIN นี้ถูกใช้งานแล้ว กรุณาเลือก PIN อื่น");
-        setPin("");
-        setPinConfirm("");
-        setStep(2);
-        setBusy(false);
+      const normalizedUsername = normalizeUsername(username);
+      if (!USERNAME_PATTERN.test(normalizedUsername)) {
+        setError("ชื่อผู้ใช้ต้องเป็นภาษาอังกฤษ/ตัวเลข 3-24 ตัว และขึ้นต้นด้วยตัวอักษร");
         return;
       }
 
-      // ถ้ายังไม่มีใครตั้งระบบมาก่อนเลย (ยังไม่มี meta/setup) คนแรกที่สมัครจะกลายเป็นเจ้าของร้านทันที
-      // ไม่ต้องเข้า Firebase Console ไปแก้ role ด้วยมืออีกต่อไป
-      const setupSnap = await getDoc(doc(db, "meta", "setup"));
+      const usernameRef = doc(db, "pinDirectory", normalizedUsername);
+      const setupRef = doc(db, "meta", "setup");
+      const [existingUsername, setupSnap] = await Promise.all([
+        getDoc(usernameRef),
+        getDoc(setupRef),
+      ]);
+      if (existingUsername.exists()) {
+        setError("ชื่อผู้ใช้นี้ถูกใช้งานแล้ว กรุณาเลือกชื่ออื่น");
+        return;
+      }
+
+      if (setupSnap.exists() && setupSnap.data().loginMode !== "username") {
+        setError("เจ้าของร้านกำลังย้ายข้อมูลเข้าสู่ระบบ กรุณาลองใหม่ภายหลัง");
+        return;
+      }
+
       const isFirstEverUser = !setupSnap.exists();
 
       const email = randomPinEmail();
       const cred = await createUserWithEmailAndPassword(auth, email, pinToPassword(pin));
+      createdUser = cred.user;
 
-      await setDoc(doc(db, "users", cred.user.uid), {
+      const batch = writeBatch(db);
+      batch.set(doc(db, "users", cred.user.uid), {
         name: name.trim(),
-        pin,
+        username: normalizedUsername,
         role: isFirstEverUser ? "owner" : "pending",
         createdAt: serverTimestamp(),
       });
-      // ผูก PIN นี้กับบัญชี เพื่อให้หน้า Login ค้นหาเจอตอนพิมพ์ PIN
-      await setDoc(doc(db, "pinDirectory", pin), { uid: cred.user.uid, email });
-
+      batch.set(usernameRef, { uid: cred.user.uid, email });
       if (isFirstEverUser) {
-        // ล็อกไว้ว่าตั้งเจ้าของร้านคนแรกไปแล้ว คนถัดไปที่สมัครจะเป็น pending ตามปกติเสมอ
-        await setDoc(doc(db, "meta", "setup"), {
+        batch.set(setupRef, {
           ownerBootstrappedAt: serverTimestamp(),
           ownerUid: cred.user.uid,
+          ownerCount: 1,
+          loginMode: "username",
         });
-        navigate("/");
-        return;
       }
+      await batch.commit();
+      createdUser = null;
 
-      navigate("/pending");
+      toast("สมัครใช้งานแล้ว");
+      navigate(isFirstEverUser ? "/" : "/pending");
     } catch (err) {
       console.error(err);
-      setError("สมัครไม่สำเร็จ ลองใหม่อีกครั้ง");
+      let message = "สมัครไม่สำเร็จ ลองใหม่อีกครั้ง";
+      if (createdUser) {
+        try {
+          const savedProfile = await getDoc(doc(db, "users", createdUser.uid));
+          if (!savedProfile.exists()) await deleteUser(createdUser);
+          else message = "บัญชีถูกสร้างแล้ว แต่ยืนยันผลการสมัครไม่สำเร็จ กรุณาเข้าสู่ระบบด้วยชื่อผู้ใช้และ PIN";
+        } catch (cleanupError) {
+          console.error(cleanupError);
+          message = "ยืนยันผลการสมัครไม่สำเร็จ กรุณาตรวจสอบบัญชีผู้ใช้ก่อนลองสมัครซ้ำ";
+        }
+      }
+      setError(message);
     } finally {
       setBusy(false);
     }
   }
 
+  async function cancelRegistration() {
+    if ((name || username || pin || pinConfirm) && !await confirm({
+      title: "ยกเลิกการลงทะเบียน",
+      description: "ข้อมูลที่กรอกไว้แต่ยังไม่ได้ส่งจะหายไป",
+      confirmLabel: "ทิ้งข้อมูล",
+      cancelLabel: "ทำต่อ",
+      danger: true,
+    })) return;
+    navigate("/login");
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-paper px-4">
-      <div className="w-full max-w-sm bg-white border border-paperLine rounded-lg p-6 receipt-edge text-center">
-        <h1 className="font-slab text-xl mb-1">ลงทะเบียนพนักงานใหม่</h1>
+      <div className="w-full max-w-sm bg-white border border-paperLine rounded-lg p-6 text-center">
+        <FormHeader
+          title={step === 3 ? "ยืนยันการลงทะเบียน" : "ลงทะเบียนพนักงานใหม่"}
+          onCancel={cancelRegistration}
+          onSave={() => {
+            if (step === 1) goToPinStep();
+            else if (step === 2) confirmFirstPin();
+            else finish();
+          }}
+          saving={busy}
+          saveDisabled={step === 3 && pinConfirm.length < pin.length}
+          saveLabel={step === 3 ? "สมัครใช้งาน" : "ถัดไป"}
+        />
         <p className="text-sm text-inkSoft mb-5">
-          ถ้าเป็นคนแรกที่สมัครเข้าระบบนี้ จะกลายเป็น "เจ้าของร้าน" ทันทีโดยอัตโนมัติ — คนถัดๆ ไปจะอยู่ในสถานะ
-          "รออนุมัติ" จนกว่าเจ้าของร้านจะกำหนดสิทธิ์ให้
+          ตั้งชื่อผู้ใช้และ PIN 6 หลักสำหรับเข้าสู่ระบบ ถ้าเป็นคนแรกที่สมัครจะเป็นเจ้าของร้าน
         </p>
 
         {step === 1 && (
@@ -104,25 +158,35 @@ export default function Register() {
               <label className="text-sm text-inkSoft block mb-1">ชื่อ-นามสกุล</label>
               <input
                 autoFocus
+                autoComplete="name"
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="w-full border border-paperLine rounded px-3 py-2 focus:border-teal"
               />
             </div>
+            <div>
+              <label htmlFor="register-username" className="text-sm text-inkSoft block mb-1">
+                ชื่อผู้ใช้ (ภาษาอังกฤษ/ตัวเลข)
+              </label>
+              <input
+                id="register-username"
+                autoComplete="username"
+                pattern="[A-Za-z][A-Za-z0-9._-]{2,23}"
+                required
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className="w-full border border-paperLine rounded px-3 py-2 focus:border-teal"
+              />
+              <p className="text-xs text-inkSoft mt-1">3-24 ตัว ขึ้นต้นด้วยตัวอักษร</p>
+            </div>
             {error && <p className="text-sm text-rust">{error}</p>}
-            <button
-              type="submit"
-              className="w-full bg-teal text-white rounded py-2.5 font-medium hover:bg-teal-dark"
-            >
-              ถัดไป
-            </button>
           </form>
         )}
 
         {step === 2 && (
           <div>
-            <p className="text-sm text-inkSoft mb-3">ตั้ง PIN สำหรับเข้าสู่ระบบ (4-6 หลัก)</p>
+            <p className="text-sm text-inkSoft mb-3">ตั้ง PIN สำหรับเข้าสู่ระบบ (6 หลัก)</p>
             <PinPad value={pin} onChange={setPin} maxLength={6} />
             {error && <p className="text-sm text-rust mt-3">{error}</p>}
             <div className="flex gap-2 mt-4">
@@ -135,14 +199,6 @@ export default function Register() {
                 className="flex-1 border border-paperLine rounded py-2.5 text-sm"
               >
                 ย้อนกลับ
-              </button>
-              <button
-                type="button"
-                onClick={confirmFirstPin}
-                disabled={pin.length < 4}
-                className="flex-1 bg-teal text-white rounded py-2.5 font-medium hover:bg-teal-dark disabled:opacity-40"
-              >
-                ถัดไป
               </button>
             </div>
           </div>
@@ -165,14 +221,6 @@ export default function Register() {
                 className="flex-1 border border-paperLine rounded py-2.5 text-sm"
               >
                 ย้อนกลับ
-              </button>
-              <button
-                type="button"
-                onClick={finish}
-                disabled={busy || pinConfirm.length < pin.length}
-                className="flex-1 bg-teal text-white rounded py-2.5 font-medium hover:bg-teal-dark disabled:opacity-40"
-              >
-                {busy ? "กำลังสมัคร..." : "ยืนยันสมัครใช้งาน"}
               </button>
             </div>
           </div>

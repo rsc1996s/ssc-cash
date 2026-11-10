@@ -18,7 +18,7 @@ export function buildFundLedger(fund, topups, transactions) {
       entries.push({
         date: toDate(t.createdAt),
         kind: "topup",
-        label: "เงินรับเข้ากองทุน",
+        label: "เงินรับเข้างบค่าใช้จ่าย",
         detail: t.note || "-",
         amount: t.amount,
         by: t.createdByName,

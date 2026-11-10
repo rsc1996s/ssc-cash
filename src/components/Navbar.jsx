@@ -5,20 +5,8 @@ import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { auth, db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
 import { initials } from "./Sidebar";
-import {
-  Receipt,
-  PlusCircle,
-  ClipboardCheck,
-  Users,
-  Wallet,
-  BarChart3,
-  ArrowLeftRight,
-  FileText,
-  KeyRound,
-  LogOut,
-  Menu,
-  X,
-} from "lucide-react";
+import { PlusCircle, KeyRound, LogOut, Menu, X } from "lucide-react";
+import { getNavItems } from "./navItems";
 
 function NavBadge({ count }) {
   if (!count) return null;
@@ -66,32 +54,34 @@ export default function Navbar() {
 
   const isActive = (path) => location.pathname === path;
 
-  const navItems = [
-    { to: "/", icon: Receipt, label: isGuest ? "รายการทั้งหมด" : "รายการของฉัน", show: true },
-    { to: "/transfers", icon: FileText, label: "ใบเบิกเงินโอน", show: isStaff },
-    { to: "/owner", icon: ClipboardCheck, label: "ตรวจสอบทั้งหมด", badge: pendingTxCount, show: isOwner },
-    { to: "/admin/users", icon: Users, label: "ผู้ใช้งาน", badge: pendingUserCount, show: isOwner },
-    { to: "/admin/funds", icon: Wallet, label: "กองทุน", show: isOwner },
-    { to: "/reports", icon: BarChart3, label: "รายงาน", show: isOwner || isGuest },
-    { to: "/transfers", icon: ArrowLeftRight, label: "โอนจ่าย", show: isOwner },
-  ].filter((item) => item.show);
+  const navItems = getNavItems({ isOwner, isGuest, isStaff, pendingTxCount, pendingUserCount });
+  const currentPage = navItems.find(
+    (item) => location.pathname === item.to || (item.to !== "/" && location.pathname.startsWith(item.to))
+  );
+  const pageTitle = currentPage?.label || (
+    location.pathname === "/new"
+      ? "บันทึกรายการ"
+      : location.pathname.startsWith("/transaction/")
+        ? "รายละเอียดรายการ"
+        : "ตั้งค่า"
+  );
 
   return (
     <>
-      {/* แถบบน — โลโก้ + ปุ่มเปิดเมนู/โปรไฟล์ */}
-      <header className="no-print lg:hidden bg-ink text-paper sticky top-0 z-20">
-        <div className="px-4 flex items-center justify-between h-14">
-          <Link to="/" className="font-slab text-base tracking-tight truncate">
-            บันทึกเงินสดหน้าร้าน
-          </Link>
+      <header className="no-print lg:hidden sticky top-0 z-20 border-b border-paperLine bg-white/95 pt-[env(safe-area-inset-top)] backdrop-blur">
+        <div className="flex h-14 items-center justify-between px-4">
+          <h1 className="truncate text-base font-semibold">{pageTitle}</h1>
           <button
+            type="button"
+            aria-label="เปิดเมนูบัญชี"
+            aria-expanded={menuOpen}
             onClick={() => setMenuOpen((o) => !o)}
-            className="flex items-center gap-2 rounded-md pl-1 pr-2 py-1 hover:bg-white/10 transition-colors shrink-0"
+            className="flex shrink-0 items-center gap-2 rounded-md pl-1 pr-2 py-1 text-inkSoft transition-colors hover:bg-blue-50"
           >
-            <span className="w-7 h-7 rounded-full bg-teal flex items-center justify-center text-xs font-semibold">
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700">
               {initials(profile?.name)}
             </span>
-            <Menu size={18} />
+            <Menu size={20} />
           </button>
         </div>
       </header>
@@ -102,14 +92,14 @@ export default function Navbar() {
           className="lg:hidden fixed inset-0 z-30 flex flex-col justify-end"
           onClick={() => setMenuOpen(false)}
         >
-          <div className="absolute inset-0 bg-ink/40" />
+          <div className="absolute inset-0 bg-slate-900/40" />
           <div
-            className="relative bg-white text-ink rounded-t-2xl shadow-lg pb-24 max-h-[75vh] overflow-y-auto"
+            className="relative max-h-[75vh] overflow-y-auto rounded-t-2xl bg-white pb-[calc(6rem+env(safe-area-inset-bottom))] text-ink shadow-lg"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-4 py-3 border-b border-paperLine sticky top-0 bg-white">
               <div>
-                <div className="text-sm font-medium">{profile?.name}</div>
+                <div className="text-sm font-semibold">{profile?.name}</div>
                 <div className="text-xs text-inkSoft">
                   {isOwner ? "เจ้าของ/ผู้จัดการ" : isStaff ? "พนักงาน" : "ผู้อ่าน (Guest)"}
                 </div>
@@ -125,7 +115,7 @@ export default function Navbar() {
                   to={item.to}
                   onClick={() => setMenuOpen(false)}
                   className={`flex items-center gap-3 px-3 py-3.5 rounded-lg text-sm font-medium ${
-                    isActive(item.to) ? "bg-teal-light text-teal-dark" : "text-ink hover:bg-paper"
+                    isActive(item.to) ? "bg-blue-50 text-blue-700" : "text-ink hover:bg-blue-50"
                   }`}
                 >
                   <item.icon size={19} strokeWidth={2} />
@@ -137,14 +127,14 @@ export default function Navbar() {
               <Link
                 to="/change-pin"
                 onClick={() => setMenuOpen(false)}
-                className="flex items-center gap-3 px-3 py-3.5 rounded-lg text-sm font-medium text-ink hover:bg-paper"
+                className="flex items-center gap-3 px-3 py-3.5 rounded-lg text-sm font-medium text-ink hover:bg-blue-50"
               >
                 <KeyRound size={19} className="text-inkSoft" />
                 เปลี่ยน PIN
               </Link>
               <button
                 onClick={handleLogout}
-                className="flex items-center gap-3 px-3 py-3.5 rounded-lg text-sm font-medium text-rust hover:bg-paper"
+                className="flex items-center gap-3 px-3 py-3.5 rounded-lg text-sm font-medium text-rust hover:bg-red-50"
               >
                 <LogOut size={19} />
                 ออกจากระบบ
@@ -156,10 +146,8 @@ export default function Navbar() {
 
       {/* แถบเมนูล่าง — เข้าถึงเมนูหลักโดยไม่ต้องเอื้อมขึ้นบน */}
       <MobileTabBar
-        isOwner={isOwner}
-        isStaff={isStaff}
         isGuest={isGuest}
-        pendingTxCount={pendingTxCount}
+        navItems={navItems}
         isActive={isActive}
         onOpenMenu={() => setMenuOpen(true)}
       />
@@ -176,11 +164,11 @@ function TabItem({ to, icon: Icon, label, badge, active, onClick }) {
           <span className="absolute -top-1 -right-1.5 w-2 h-2 rounded-full bg-rust border border-white" />
         )}
       </span>
-      <span className={`text-[10.5px] leading-none ${active ? "font-semibold" : ""}`}>{label}</span>
+      <span className={`text-xs leading-none ${active ? "font-semibold" : ""}`}>{label}</span>
     </>
   );
-  const cls = `flex-1 flex flex-col items-center justify-center gap-1 py-2 min-h-[54px] ${
-    active ? "text-teal" : "text-inkSoft"
+  const cls = `flex-1 flex flex-col items-center justify-center gap-1 py-2 min-h-[60px] ${
+    active ? "text-blue-700" : "text-inkSoft"
   }`;
   return onClick ? (
     <button onClick={onClick} className={cls}>
@@ -193,35 +181,26 @@ function TabItem({ to, icon: Icon, label, badge, active, onClick }) {
   );
 }
 
-function MobileTabBar({ isOwner, isStaff, isGuest, pendingTxCount, isActive, onOpenMenu }) {
-  const contextual = [];
-  if (isOwner) {
-    contextual.push({ to: "/owner", icon: ClipboardCheck, label: "ตรวจสอบ", badge: pendingTxCount });
-    contextual.push({ to: "/reports", icon: BarChart3, label: "รายงาน" });
-  } else if (isStaff) {
-    contextual.push({ to: "/transfers", icon: FileText, label: "ใบเบิก" });
-  } else if (isGuest) {
-    contextual.push({ to: "/reports", icon: BarChart3, label: "รายงาน" });
-  }
-  const left = contextual.slice(0, 1);
-  const right = contextual.slice(1);
-
+function MobileTabBar({ navItems, isGuest, isActive, onOpenMenu }) {
+  const home = navItems.find((item) => item.to === "/");
+  const firstContext =
+    navItems.find((item) => item.to === "/owner") ||
+    navItems.find((item) => item.to === "/transfers") ||
+    navItems.find((item) => item.to === "/reports");
+  const secondContext = navItems.find((item) => item.to === "/reports" && item !== firstContext);
   return (
-    <nav className="lg:hidden no-print fixed bottom-0 inset-x-0 z-20 bg-white border-t border-paperLine flex items-stretch pb-[env(safe-area-inset-bottom)]">
-      <TabItem to="/" icon={Receipt} label="หน้าแรก" active={isActive("/")} />
-      {left.map((item) => (
-        <TabItem key={item.label} {...item} active={isActive(item.to)} />
-      ))}
+    <nav className="lg:hidden no-print fixed bottom-0 inset-x-0 z-20 flex items-stretch border-t border-paperLine bg-white pb-[env(safe-area-inset-bottom)]">
+      {home && <TabItem {...home} label="หน้าแรก" active={isActive("/")} />}
+      {firstContext && <TabItem {...firstContext} label={firstContext.to === "/owner" ? "ตรวจสอบ" : firstContext.to === "/transfers" ? "ใบเบิก" : "รายงาน"} active={isActive(firstContext.to)} />}
       {!isGuest && (
-        <Link to="/new" className="flex-1 flex flex-col items-center justify-center">
-          <span className="w-12 h-12 -mt-5 rounded-full bg-teal text-white flex items-center justify-center shadow-lg border-4 border-white">
+        <Link to="/new" aria-label="เพิ่มรายการ" className="flex flex-1 flex-col items-center justify-center">
+          <span className="-mt-5 flex h-12 w-12 items-center justify-center rounded-full border-4 border-white bg-blue-600 text-white shadow-lg">
             <PlusCircle size={24} />
           </span>
+          <span className="text-xs font-medium text-blue-700">เพิ่ม</span>
         </Link>
       )}
-      {right.map((item) => (
-        <TabItem key={item.label} {...item} active={isActive(item.to)} />
-      ))}
+      {secondContext && <TabItem {...secondContext} label="รายงาน" active={isActive(secondContext.to)} />}
       <TabItem icon={Menu} label="เมนู" onClick={onOpenMenu} />
     </nav>
   );

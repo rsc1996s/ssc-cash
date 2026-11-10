@@ -4,7 +4,7 @@ import { db } from "../firebase";
 import { formatBaht } from "../lib/format";
 import { currentFundBalance } from "../lib/ledger";
 
-// เตือนเมื่อยอดคงเหลือกองทุนต่ำกว่า 20% ของยอดตั้งต้น — ปรับตัวเลขนี้ได้ถ้าต้องการเกณฑ์อื่น
+// เตือนเมื่องบค่าใช้จ่ายคงเหลือต่ำกว่า 20% ของยอดตั้งต้น — ปรับตัวเลขนี้ได้ถ้าต้องการเกณฑ์อื่น
 const LOW_BALANCE_RATIO = 0.2;
 
 export default function LowFundBalanceBanner() {
@@ -43,7 +43,7 @@ export default function LowFundBalanceBanner() {
           <li key={f.id}>
             <span className="font-medium">{f.label}</span> เหลือ{" "}
             <span className="font-nums">{formatBaht(f.balance)}</span> บาท (จากยอดตั้งต้น{" "}
-            <span className="font-nums">{formatBaht(f.openingBalance)}</span> บาท) — ควรเติมเงินเข้ากองทุนเร็วๆ นี้
+            <span className="font-nums">{formatBaht(f.openingBalance)}</span> บาท) — ควรเติมเงินเข้างบค่าใช้จ่ายเร็วๆ นี้
           </li>
         ))}
       </ul>

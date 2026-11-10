@@ -1,6 +1,15 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
-import { collection, doc, onSnapshot, addDoc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  onSnapshot,
+  addDoc,
+  updateDoc,
+  getDoc,
+  serverTimestamp,
+  writeBatch,
+} from "firebase/firestore";
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
 import Layout from "../components/Layout";
@@ -8,6 +17,9 @@ import { formatBaht } from "../lib/format";
 import { nextDocNumber } from "../lib/counters";
 import { lineTotal, renumberLines } from "../lib/transfers";
 import Combobox from "../components/Combobox";
+import { newAuditEvent, queueAuditEvent } from "../lib/audit";
+import { useFeedback } from "../components/ui/FeedbackProvider";
+import FormHeader from "../components/ui/FormHeader";
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
@@ -22,6 +34,7 @@ export default function WithdrawalRequestForm() {
   const isNew = !id;
   const navigate = useNavigate();
   const { user, profile, isOwner } = useAuth();
+  const { confirm, toast } = useFeedback();
 
   const [sourceAccounts, setSourceAccounts] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -35,6 +48,7 @@ export default function WithdrawalRequestForm() {
   const [loaded, setLoaded] = useState(isNew);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [dirty, setDirty] = useState(false);
 
   const canEdit = isNew || isOwner || createdBy === user.uid;
 
@@ -69,14 +83,17 @@ export default function WithdrawalRequestForm() {
   }, [id, isNew]);
 
   function updateLine(idx, field, value) {
+    setDirty(true);
     setLines((ls) => ls.map((l, i) => (i === idx ? { ...l, [field]: value } : l)));
   }
 
   function addLine() {
+    setDirty(true);
     setLines((ls) => [...ls, emptyLine(ls.length + 1)]);
   }
 
   function removeLine(idx) {
+    setDirty(true);
     setLines((ls) => renumberLines(ls.filter((_, i) => i !== idx)));
   }
 
@@ -85,6 +102,7 @@ export default function WithdrawalRequestForm() {
     const account = sourceAccounts.find((a) => a.id === sourceAccountId);
     if (!account) {
       setError("กรุณาเลือกบัญชี A (บัญชีต้นทาง)");
+      document.getElementById("withdrawal-source-account")?.focus();
       return;
     }
     const cleanLines = lines
@@ -97,6 +115,11 @@ export default function WithdrawalRequestForm() {
       }));
     if (cleanLines.length === 0) {
       setError("กรุณาเพิ่มอย่างน้อย 1 รายการ");
+      document.getElementById(
+        window.matchMedia("(min-width: 768px)").matches
+          ? "withdrawal-line-description-desktop"
+          : "withdrawal-line-description-mobile"
+      )?.focus();
       return;
     }
 
@@ -129,6 +152,7 @@ export default function WithdrawalRequestForm() {
           updatedAt: serverTimestamp(),
         });
       }
+      toast(isNew ? "บันทึกใบเบิกแล้ว" : "บันทึกการแก้ไขใบเบิกแล้ว");
       navigate("/transfers");
     } catch (err) {
       console.error(err);
@@ -138,10 +162,53 @@ export default function WithdrawalRequestForm() {
     }
   }
 
-  async function handleDelete() {
-    if (!confirm("ลบใบเบิกนี้ทั้งหมด? การกระทำนี้ย้อนกลับไม่ได้")) return;
-    await deleteDoc(doc(db, "withdrawalRequests", id));
+  async function cancelForm() {
+    if (dirty && !await confirm({
+      title: "ยกเลิกการแก้ไข",
+      description: "ข้อมูลที่เปลี่ยนแปลงแต่ยังไม่บันทึกจะหายไป",
+      confirmLabel: "ทิ้งข้อมูล",
+      cancelLabel: "ทำต่อ",
+      danger: true,
+    })) return;
     navigate("/transfers");
+  }
+
+  async function handleDelete() {
+    if (!await confirm({
+      title: "ลบใบเบิก",
+      description: "ลบใบเบิกนี้ทั้งหมด? การกระทำนี้ย้อนกลับไม่ได้",
+      confirmLabel: "ลบใบเบิก",
+      danger: true,
+    })) return;
+    setBusy(true);
+    setError("");
+    try {
+      const withdrawalRef = doc(db, "withdrawalRequests", id);
+      const snapshot = await getDoc(withdrawalRef);
+      if (!snapshot.exists()) {
+        throw new Error("ไม่พบใบเบิกที่ต้องการลบ");
+      }
+      const audit = newAuditEvent({
+        id: `delete-withdrawal-${id}`,
+        actorUid: user.uid,
+        actorName: profile?.name || user.email,
+        action: "withdrawal-deleted",
+        targetCollection: "withdrawalRequests",
+        targetId: id,
+        before: snapshot.data(),
+        after: null,
+      });
+      const batch = writeBatch(db);
+      batch.delete(withdrawalRef);
+      queueAuditEvent(batch, audit);
+      await batch.commit();
+      navigate("/transfers");
+    } catch (err) {
+      console.error(err);
+      setError("ลบใบเบิกไม่สำเร็จ กรุณาตรวจสอบสิทธิ์และลองใหม่");
+    } finally {
+      setBusy(false);
+    }
   }
 
   if (!loaded) {
@@ -156,21 +223,28 @@ export default function WithdrawalRequestForm() {
 
   return (
     <Layout>
-      <button onClick={() => navigate("/transfers")} className="text-sm text-inkSoft mb-4">
-        ← กลับ
-      </button>
-
-      <div className="bg-white border border-paperLine rounded-lg p-6 receipt-edge">
-        <div className="flex items-center justify-between mb-4">
-          <h1 className="font-slab text-xl">
-            {isNew ? "สร้างใบเบิกเงินโอนใหม่" : `${canEdit ? "แก้ไข" : "ดู"}ใบเบิก ${requestNo}`}
-          </h1>
-          {!isNew && (
+      <div className="bg-white border border-paperLine rounded-lg p-6">
+        {canEdit ? (
+          <FormHeader
+            title={isNew ? "สร้างใบเบิกเงินโอนใหม่" : `แก้ไขใบเบิก ${requestNo}`}
+            onCancel={cancelForm}
+            onSave={handleSave}
+            saving={busy}
+            saveLabel="บันทึก"
+          />
+        ) : (
+          <div className="mb-4 flex min-h-11 items-center gap-3">
+            <button onClick={cancelForm} className="text-sm text-inkSoft">← กลับ</button>
+            <h1 className="font-slab text-xl">ดูใบเบิก {requestNo}</h1>
+          </div>
+        )}
+        {!isNew && (
+          <div className="mb-4 flex justify-end">
             <Link to={`/transfers/withdrawals/${id}/print`} target="_blank" className="text-sm border border-paperLine rounded px-3 py-1.5">
               พิมพ์ / PDF
             </Link>
-          )}
-        </div>
+          </div>
+        )}
 
         {!isNew && !canEdit && (
           <p className="text-xs text-amber bg-amber-light border border-amber/40 rounded px-3 py-2 mb-4">
@@ -182,8 +256,12 @@ export default function WithdrawalRequestForm() {
           <div>
             <label className="text-sm text-inkSoft block mb-1">รับโอนเข้าบัญชี (A)</label>
             <Combobox
+              id="withdrawal-source-account"
               value={sourceAccountId}
-              onChange={setSourceAccountId}
+              onChange={(value) => {
+                setDirty(true);
+                setSourceAccountId(value);
+              }}
               disabled={!canEdit}
               placeholder="— เลือกบัญชี —"
               options={sourceAccounts.map((a) => ({
@@ -203,7 +281,10 @@ export default function WithdrawalRequestForm() {
             <input
               type="date"
               value={date}
-              onChange={(e) => setDate(e.target.value)}
+              onChange={(e) => {
+                setDirty(true);
+                setDate(e.target.value);
+              }}
               disabled={!canEdit}
               className="w-full border border-paperLine rounded px-3 py-2 focus:border-teal disabled:bg-paper disabled:text-inkSoft"
             />
@@ -232,6 +313,7 @@ export default function WithdrawalRequestForm() {
                   className="w-full border border-paperLine rounded px-3 py-2.5 text-sm focus:border-teal disabled:bg-paper disabled:text-inkSoft"
                 />
                 <input
+                  id={idx === 0 ? "withdrawal-line-description-mobile" : undefined}
                   value={l.description}
                   onChange={(e) => updateLine(idx, "description", e.target.value)}
                   placeholder="รายละเอียด"
@@ -281,6 +363,7 @@ export default function WithdrawalRequestForm() {
                   </td>
                   <td className="py-1.5 pr-2">
                     <input
+                      id={idx === 0 ? "withdrawal-line-description-desktop" : undefined}
                       value={l.description}
                       onChange={(e) => updateLine(idx, "description", e.target.value)}
                       placeholder="รายละเอียด"
@@ -327,7 +410,10 @@ export default function WithdrawalRequestForm() {
           <label className="text-sm text-inkSoft block mb-1">หมายเหตุ</label>
           <textarea
             value={note}
-            onChange={(e) => setNote(e.target.value)}
+            onChange={(e) => {
+              setDirty(true);
+              setNote(e.target.value);
+            }}
             rows={2}
             disabled={!canEdit}
             className="w-full border border-paperLine rounded px-3 py-2 mb-4 focus:border-teal disabled:bg-paper disabled:text-inkSoft"
@@ -344,14 +430,7 @@ export default function WithdrawalRequestForm() {
         {error && <p className="text-sm text-rust mb-3">{error}</p>}
 
         {canEdit && (
-          <div className="flex gap-2">
-            <button
-              onClick={handleSave}
-              disabled={busy}
-              className="bg-teal text-white rounded px-5 py-2.5 text-sm font-medium disabled:opacity-60"
-            >
-              {busy ? "กำลังบันทึก..." : "บันทึกใบเบิก"}
-            </button>
+          <div className="flex justify-end">
             {!isNew && (
               <button onClick={handleDelete} className="border border-rust text-rust rounded px-5 py-2.5 text-sm">
                 ลบใบเบิกนี้

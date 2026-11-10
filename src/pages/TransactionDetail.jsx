@@ -1,12 +1,16 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { doc, onSnapshot, updateDoc, arrayUnion, serverTimestamp } from "firebase/firestore";
+import { doc, onSnapshot, updateDoc, arrayUnion, serverTimestamp, writeBatch } from "firebase/firestore";
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
 import Layout from "../components/Layout";
 import StatusBadge from "../components/StatusBadge";
 import SignaturePad from "../components/SignaturePad";
 import { formatBaht, formatDateTime, TYPE_LABEL, PAYMENT_LABEL } from "../lib/format";
+import { newAuditEvent, queueAuditEvent } from "../lib/audit";
+import FormHeader from "../components/ui/FormHeader";
+import Sheet from "../components/ui/Sheet";
+import { useFeedback } from "../components/ui/FeedbackProvider";
 
 const EDITABLE_FIELDS = [
   { key: "amount", label: "จำนวนเงิน", type: "number" },
@@ -21,6 +25,7 @@ export default function TransactionDetail() {
   const { id } = useParams();
   const { user, isOwner, profile } = useAuth();
   const navigate = useNavigate();
+  const { confirm, toast } = useFeedback();
   const [tx, setTx] = useState(null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({});
@@ -30,6 +35,7 @@ export default function TransactionDetail() {
   const [busy, setBusy] = useState(false);
   const [showSignFlow, setShowSignFlow] = useState(false);
   const [signatureDataUrl, setSignatureDataUrl] = useState(null);
+  const [detailTab, setDetailTab] = useState("details");
 
   useEffect(() => {
     const unsub = onSnapshot(doc(db, "transactions", id), (snap) => {
@@ -62,10 +68,25 @@ export default function TransactionDetail() {
     setEditing(true);
   }
 
+  async function cancelEdit() {
+    const changed = Object.keys(draft).some((key) => String(draft[key] ?? "") !== String(tx[key] ?? ""));
+    if (changed || reason.trim()) {
+      if (!await confirm({
+        title: "ยกเลิกการแก้ไข",
+        description: "ข้อมูลที่แก้ไขแต่ยังไม่บันทึกจะหายไป",
+        confirmLabel: "ยกเลิกการแก้ไข",
+        danger: true,
+      })) return;
+    }
+    setEditing(false);
+    setError("");
+  }
+
   async function saveEdit(e) {
     e.preventDefault();
     if (!reason.trim()) {
       setError("กรุณาระบุเหตุผลในการแก้ไข (บันทึกลงประวัติถาวร)");
+      document.getElementById("transaction-edit-reason")?.focus();
       return;
     }
 
@@ -101,6 +122,7 @@ export default function TransactionDetail() {
 
       await updateDoc(doc(db, "transactions", id), updates);
       setEditing(false);
+      toast("บันทึกการแก้ไขแล้ว");
     } catch (err) {
       console.error(err);
       setError("บันทึกไม่สำเร็จ ลองใหม่อีกครั้ง");
@@ -110,19 +132,44 @@ export default function TransactionDetail() {
   }
 
   async function review(status) {
+    const confirmed = await confirm({
+      title: status === "rejected" ? "ตีกลับรายการ" : "ยกเลิกรายการ",
+      description: status === "rejected"
+        ? "ยืนยันตีกลับรายการนี้หรือไม่"
+        : "ยืนยันยกเลิกรายการนี้หรือไม่",
+      confirmLabel: status === "rejected" ? "ตีกลับ" : "ยกเลิกรายการ",
+      danger: true,
+    });
+    if (!confirmed) return;
     setBusy(true);
+    setError("");
     try {
-      await updateDoc(doc(db, "transactions", id), {
+      const audit = newAuditEvent({
+        actorUid: user.uid,
+        actorName: profile?.name || user.email,
+        action: "transaction-status-changed",
+        targetCollection: "transactions",
+        targetId: id,
+        before: { status: tx.status },
+        after: { status },
+      });
+      const batch = writeBatch(db);
+      batch.update(doc(db, "transactions", id), {
         status,
         reviewedBy: user.uid,
         reviewedByName: profile?.name || user.email,
         reviewedAt: serverTimestamp(),
         reviewNote: reviewNote.trim() || null,
         updatedAt: serverTimestamp(),
+        auditLogId: audit.ref.id,
       });
+      queueAuditEvent(batch, audit);
+      await batch.commit();
       setReviewNote("");
+      toast(status === "rejected" ? "ตีกลับรายการแล้ว" : "ยกเลิกรายการแล้ว");
     } catch (err) {
       console.error(err);
+      setError("บันทึกผลการตรวจสอบไม่สำเร็จ");
     } finally {
       setBusy(false);
     }
@@ -137,7 +184,17 @@ export default function TransactionDetail() {
     setBusy(true);
     setError("");
     try {
-      await updateDoc(doc(db, "transactions", id), {
+      const audit = newAuditEvent({
+        actorUid: user.uid,
+        actorName: profile?.name || user.email,
+        action: "transaction-status-changed",
+        targetCollection: "transactions",
+        targetId: id,
+        before: { status: tx.status },
+        after: { status: "approved" },
+      });
+      const batch = writeBatch(db);
+      batch.update(doc(db, "transactions", id), {
         status: "approved",
         reviewedBy: user.uid,
         reviewedByName: profile?.name || user.email,
@@ -145,10 +202,14 @@ export default function TransactionDetail() {
         reviewNote: reviewNote.trim() || null,
         approvalSignatureURL: signatureDataUrl,
         updatedAt: serverTimestamp(),
+        auditLogId: audit.ref.id,
       });
+      queueAuditEvent(batch, audit);
+      await batch.commit();
       setShowSignFlow(false);
       setSignatureDataUrl(null);
       setReviewNote("");
+      toast("อนุมัติรายการแล้ว");
     } catch (err) {
       console.error(err);
       setError("อนุมัติไม่สำเร็จ ลองใหม่อีกครั้ง");
@@ -163,7 +224,27 @@ export default function TransactionDetail() {
         ← กลับ
       </button>
 
-      <div className="bg-white border border-paperLine rounded-lg p-6 receipt-edge mb-6">
+      <div role="tablist" aria-label="รายละเอียดรายการ" className="mb-4 flex gap-2">
+        {[
+          ["details", "รายละเอียด"],
+          ["history", "ประวัติการแก้ไข"],
+        ].map(([value, label]) => (
+          <button
+            type="button"
+            role="tab"
+            aria-selected={detailTab === value}
+            key={value}
+            onClick={() => setDetailTab(value)}
+            className={`min-h-11 rounded-full border px-4 text-sm ${
+              detailTab === value ? "border-blue-600 bg-blue-600 text-white" : "border-paperLine bg-white text-inkSoft"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {detailTab === "details" && <div className="bg-white border border-paperLine rounded-lg p-6 mb-6">
         <div className="flex justify-between items-start mb-4">
           <div>
             <div className="text-xs text-inkSoft mb-1">
@@ -212,7 +293,14 @@ export default function TransactionDetail() {
             )}
           </dl>
         ) : (
-          <form onSubmit={saveEdit} className="space-y-3 mb-4">
+          <form id="edit-transaction-form" onSubmit={saveEdit} className="space-y-3 mb-4">
+            <FormHeader
+              title="แก้ไขรายการ"
+              onCancel={cancelEdit}
+              formId="edit-transaction-form"
+              saving={busy}
+              saveLabel="บันทึก"
+            />
             {EDITABLE_FIELDS.map((f) => (
               <div key={f.key}>
                 <label className="text-sm text-inkSoft block mb-1">{f.label}</label>
@@ -230,6 +318,7 @@ export default function TransactionDetail() {
                 เหตุผลในการแก้ไข <span className="text-rust">*จำเป็น</span>
               </label>
               <textarea
+                id="transaction-edit-reason"
                 required
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
@@ -239,22 +328,6 @@ export default function TransactionDetail() {
               />
             </div>
             {error && <p className="text-sm text-rust">{error}</p>}
-            <div className="flex gap-2">
-              <button
-                type="submit"
-                disabled={busy}
-                className="bg-teal text-white rounded px-4 py-2 text-sm font-medium disabled:opacity-60"
-              >
-                บันทึกการแก้ไข
-              </button>
-              <button
-                type="button"
-                onClick={() => setEditing(false)}
-                className="border border-paperLine rounded px-4 py-2 text-sm"
-              >
-                ยกเลิก
-              </button>
-            </div>
           </form>
         )}
 
@@ -302,58 +375,32 @@ export default function TransactionDetail() {
               className="w-full border border-paperLine rounded px-3 py-2 mb-3 focus:border-teal"
             />
 
-            {!showSignFlow ? (
-              <div className="flex gap-2 flex-wrap">
-                <button
-                  onClick={() => setShowSignFlow(true)}
-                  disabled={busy}
-                  className="bg-teal text-white rounded px-4 py-2 text-sm font-medium"
-                >
-                  อนุมัติ (เซ็นยืนยัน)
-                </button>
-                <button
-                  onClick={() => review("rejected")}
-                  disabled={busy}
-                  className="bg-rust text-white rounded px-4 py-2 text-sm font-medium"
-                >
-                  ตีกลับ
-                </button>
-                <button
-                  onClick={() => review("voided")}
-                  disabled={busy}
-                  className="border border-paperLine rounded px-4 py-2 text-sm"
-                >
-                  ยกเลิกรายการ
-                </button>
-              </div>
-            ) : (
-              <div>
-                <p className="text-sm text-inkSoft mb-2">
-                  การอนุมัติจะถือว่า "เบิกสำเร็จ" ก็ต่อเมื่อมีลายเซ็นออนไลน์เท่านั้น — และจะพิมพ์ใบเบิกได้หลังจากนี้
-                </p>
-                <SignaturePad onChange={setSignatureDataUrl} />
-                {error && <p className="text-sm text-rust mt-2">{error}</p>}
-                <div className="flex gap-2 mt-3">
-                  <button
-                    onClick={approveWithSignature}
-                    disabled={busy}
-                    className="bg-teal text-white rounded px-4 py-2 text-sm font-medium disabled:opacity-60"
-                  >
-                    {busy ? "กำลังบันทึก..." : "ยืนยันอนุมัติด้วยลายเซ็น"}
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowSignFlow(false);
-                      setSignatureDataUrl(null);
-                      setError("");
-                    }}
-                    className="border border-paperLine rounded px-4 py-2 text-sm"
-                  >
-                    ยกเลิก
-                  </button>
-                </div>
-              </div>
-            )}
+            <p className="text-sm text-inkSoft mb-2">
+              การอนุมัติจะถือว่า "เบิกสำเร็จ" ก็ต่อเมื่อมีลายเซ็นออนไลน์เท่านั้น
+            </p>
+            <div className="flex gap-2 flex-wrap">
+              <button
+                onClick={() => setShowSignFlow(true)}
+                disabled={busy}
+                className="bg-teal text-white rounded px-4 py-2 text-sm font-medium"
+              >
+                อนุมัติ (เซ็นยืนยัน)
+              </button>
+              <button
+                onClick={() => review("rejected")}
+                disabled={busy}
+                className="bg-rust text-white rounded px-4 py-2 text-sm font-medium"
+              >
+                ตีกลับ
+              </button>
+              <button
+                onClick={() => review("voided")}
+                disabled={busy}
+                className="border border-paperLine rounded px-4 py-2 text-sm"
+              >
+                ยกเลิกรายการ
+              </button>
+            </div>
           </div>
         )}
 
@@ -372,42 +419,80 @@ export default function TransactionDetail() {
               </div>
               <Link
                 to={`/transaction/${tx.id}/print`}
-                className="text-sm bg-ink text-white rounded px-4 py-2 font-medium"
+                className="text-sm bg-blue-600 text-white rounded px-4 py-2 font-medium"
               >
                 พิมพ์ใบเบิก
               </Link>
             </div>
           </div>
         )}
-      </div>
+      </div>}
 
-      {/* Audit trail */}
-      <div className="bg-white border border-paperLine rounded-lg p-6 receipt-edge">
-        <h2 className="font-slab text-base mb-3">ประวัติการแก้ไข (Audit Trail)</h2>
-        {(!tx.editHistory || tx.editHistory.length === 0) && (
-          <p className="text-sm text-inkSoft">ยังไม่มีการแก้ไขรายการนี้</p>
-        )}
-        <ul className="space-y-3">
-          {(tx.editHistory || [])
-            .slice()
-            .reverse()
-            .map((h, i) => (
-              <li key={i} className="text-sm border-l-2 border-amber pl-3">
-                <div className="font-medium">
-                  {h.editedByName} · {new Date(h.editedAt).toLocaleString("th-TH")}
-                </div>
-                <div className="text-inkSoft mb-1">เหตุผล: {h.reason}</div>
-                <ul className="text-xs text-inkSoft list-disc list-inside">
-                  {Object.entries(h.changes || {}).map(([field, c]) => (
-                    <li key={field}>
-                      {field}: {String(c.before)} → {String(c.after)}
-                    </li>
-                  ))}
-                </ul>
-              </li>
-            ))}
-        </ul>
-      </div>
+      {detailTab === "history" && (
+        <div className="bg-white border border-paperLine rounded-lg p-6">
+          <h2 className="font-slab text-base mb-3">ประวัติการแก้ไข (Audit Trail)</h2>
+          {(!tx.editHistory || tx.editHistory.length === 0) && (
+            <p className="text-sm text-inkSoft">ยังไม่มีการแก้ไขรายการนี้</p>
+          )}
+          <ul className="space-y-3">
+            {(tx.editHistory || [])
+              .slice()
+              .reverse()
+              .map((h, i) => (
+                <li key={i} className="text-sm border-l-2 border-amber pl-3">
+                  <div className="font-medium">
+                    {h.editedByName} · {new Date(h.editedAt).toLocaleString("th-TH")}
+                  </div>
+                  <div className="text-inkSoft mb-1">เหตุผล: {h.reason}</div>
+                  <ul className="text-xs text-inkSoft list-disc list-inside">
+                    {Object.entries(h.changes || {}).map(([field, c]) => (
+                      <li key={field}>
+                        {field}: {String(c.before)} → {String(c.after)}
+                      </li>
+                    ))}
+                  </ul>
+                </li>
+              ))}
+          </ul>
+        </div>
+      )}
+
+      <Sheet
+        open={showSignFlow}
+        title="อนุมัติด้วยลายเซ็น"
+        onClose={() => {
+          setShowSignFlow(false);
+          setSignatureDataUrl(null);
+          setError("");
+        }}
+        footer={
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setShowSignFlow(false);
+                setSignatureDataUrl(null);
+                setError("");
+              }}
+              className="min-h-11 rounded-lg border border-paperLine px-4 text-sm"
+            >
+              ยกเลิก
+            </button>
+            <button
+              type="button"
+              onClick={approveWithSignature}
+              disabled={busy || !signatureDataUrl}
+              className="min-h-11 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white disabled:opacity-50"
+            >
+              {busy ? "กำลังบันทึก..." : "ยืนยันอนุมัติ"}
+            </button>
+          </div>
+        }
+      >
+        <p className="mb-3 text-sm text-inkSoft">ลงลายเซ็นเพื่อยืนยันการอนุมัติ รายการจะถือว่าเบิกสำเร็จหลังบันทึกแล้ว</p>
+        <SignaturePad onChange={setSignatureDataUrl} />
+        {error && <p role="alert" className="mt-2 text-sm text-rust">{error}</p>}
+      </Sheet>
     </Layout>
   );
 }

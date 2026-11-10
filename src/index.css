@@ -3,49 +3,71 @@
 @tailwind utilities;
 
 body {
-  font-family: "Inter", system-ui, sans-serif;
+  min-width: 320px;
+  background: #F5F9FF;
+  color: #172B4D;
+  font-family: "Noto Sans Thai", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+.page-transition {
+  min-height: 100vh;
+  animation: slide-page-in 250ms ease-out both;
+  will-change: transform;
+}
+
+.page-transition-back {
+  animation-name: slide-page-out;
+}
+
+@keyframes slide-page-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes slide-page-out {
+  from { transform: translateX(0); }
+  to { transform: translateX(100%); }
 }
 
 .font-nums {
-  font-family: "IBM Plex Mono", monospace;
   font-variant-numeric: tabular-nums;
+  font-weight: 600;
 }
 
-/* Rubber-stamp status badge — the app's signature visual element */
-.stamp {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.2rem 0.65rem;
-  border-radius: 4px;
-  border: 2px solid currentColor;
-  font-family: "Roboto Slab", serif;
-  font-weight: 700;
-  font-size: 0.68rem;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  transform: rotate(-3deg);
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+select,
+textarea {
+  min-height: 44px;
+  border-color: #D7E3F3;
+  border-radius: 0.75rem;
+  background-color: #fff;
 }
 
-/* Perforated top edge on receipt-style cards */
-.receipt-edge {
-  position: relative;
+button {
+  min-height: 44px;
 }
-.receipt-edge::before {
-  content: "";
-  position: absolute;
-  top: -1px;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background-image: radial-gradient(circle, #D8D6CC 1.1px, transparent 1.2px);
-  background-size: 10px 2px;
-  background-repeat: repeat-x;
+
+.text-sm {
+  font-size: 0.9375rem;
+}
+
+.text-xs,
+.text-\[10px\],
+.text-\[10\.5px\],
+.text-\[11px\] {
+  font-size: 0.75rem;
 }
 
 /* Focus visibility */
 :focus-visible {
-  outline: 2px solid #1F6F5C;
+  outline: 2px solid #2563EB;
   outline-offset: 2px;
 }
 
@@ -66,5 +88,11 @@ body {
   * {
     animation-duration: 0.001ms !important;
     transition-duration: 0.001ms !important;
+  }
+
+  @media (max-width: 1023px) {
+    body {
+      padding-bottom: env(safe-area-inset-bottom);
+    }
   }
 }

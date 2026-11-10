@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
-import { collection, doc, onSnapshot, addDoc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  onSnapshot,
+  addDoc,
+  updateDoc,
+  getDoc,
+  serverTimestamp,
+  writeBatch,
+} from "firebase/firestore";
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
 import Layout from "../components/Layout";
@@ -8,6 +17,9 @@ import { formatBaht } from "../lib/format";
 import { nextDocNumber } from "../lib/counters";
 import { lineTotal, renumberLines, remainingBalance } from "../lib/transfers";
 import Combobox from "../components/Combobox";
+import { newAuditEvent, queueAuditEvent } from "../lib/audit";
+import { useFeedback } from "../components/ui/FeedbackProvider";
+import FormHeader from "../components/ui/FormHeader";
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
@@ -22,6 +34,7 @@ export default function TransferPaymentForm() {
   const isNew = !id;
   const navigate = useNavigate();
   const { user, profile } = useAuth();
+  const { confirm, toast } = useFeedback();
 
   const [sourceAccounts, setSourceAccounts] = useState([]);
   const [payeeAccounts, setPayeeAccounts] = useState([]);
@@ -35,6 +48,7 @@ export default function TransferPaymentForm() {
   const [loaded, setLoaded] = useState(isNew);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
     const unsub1 = onSnapshot(collection(db, "bankAccounts"), (snap) => {
@@ -84,20 +98,24 @@ export default function TransferPaymentForm() {
       : null;
 
   function selectWithdrawal(wId) {
+    setDirty(true);
     setLinkedWithdrawalRequestId(wId);
     const w = withdrawals.find((x) => x.id === wId);
     if (w) setSourceAccountId(w.sourceAccountId);
   }
 
   function updateLine(idx, field, value) {
+    setDirty(true);
     setLines((ls) => ls.map((l, i) => (i === idx ? { ...l, [field]: value } : l)));
   }
 
   function addLine() {
+    setDirty(true);
     setLines((ls) => [...ls, emptyLine(ls.length + 1)]);
   }
 
   function removeLine(idx) {
+    setDirty(true);
     setLines((ls) => renumberLines(ls.filter((_, i) => i !== idx)));
   }
 
@@ -106,10 +124,12 @@ export default function TransferPaymentForm() {
     const account = sourceAccounts.find((a) => a.id === sourceAccountId);
     if (!account) {
       setError("กรุณาเลือกบัญชี A (บัญชีต้นทาง)");
+      document.getElementById("payment-source-account")?.focus();
       return;
     }
     if (!linkedWithdrawalRequestId) {
       setError("กรุณาเลือกใบเบิกที่จะตัดยอด");
+      document.getElementById("payment-withdrawal-select")?.focus();
       return;
     }
     const cleanLines = lines
@@ -127,6 +147,11 @@ export default function TransferPaymentForm() {
       });
     if (cleanLines.length === 0) {
       setError("กรุณาเพิ่มอย่างน้อย 1 รายการ พร้อมเลือกบัญชีผู้รับโอน");
+      document.getElementById(
+        window.matchMedia("(min-width: 768px)").matches
+          ? "payment-payee-desktop-0"
+          : "payment-payee-mobile-0"
+      )?.focus();
       return;
     }
 
@@ -158,6 +183,7 @@ export default function TransferPaymentForm() {
           updatedAt: serverTimestamp(),
         });
       }
+      toast(isNew ? "บันทึกใบโอนจ่ายแล้ว" : "บันทึกการแก้ไขใบโอนจ่ายแล้ว");
       navigate("/transfers");
     } catch (err) {
       console.error(err);
@@ -167,10 +193,53 @@ export default function TransferPaymentForm() {
     }
   }
 
-  async function handleDelete() {
-    if (!confirm("ลบใบโอนจ่ายนี้ทั้งหมด? การกระทำนี้ย้อนกลับไม่ได้")) return;
-    await deleteDoc(doc(db, "transferPayments", id));
+  async function cancelForm() {
+    if (dirty && !await confirm({
+      title: "ยกเลิกการแก้ไข",
+      description: "ข้อมูลที่เปลี่ยนแปลงแต่ยังไม่บันทึกจะหายไป",
+      confirmLabel: "ทิ้งข้อมูล",
+      cancelLabel: "ทำต่อ",
+      danger: true,
+    })) return;
     navigate("/transfers");
+  }
+
+  async function handleDelete() {
+    if (!await confirm({
+      title: "ลบใบโอนจ่าย",
+      description: "ลบใบโอนจ่ายนี้ทั้งหมด? การกระทำนี้ย้อนกลับไม่ได้",
+      confirmLabel: "ลบใบโอนจ่าย",
+      danger: true,
+    })) return;
+    setBusy(true);
+    setError("");
+    try {
+      const paymentRef = doc(db, "transferPayments", id);
+      const snapshot = await getDoc(paymentRef);
+      if (!snapshot.exists()) {
+        throw new Error("ไม่พบใบโอนจ่ายที่ต้องการลบ");
+      }
+      const audit = newAuditEvent({
+        id: `delete-payment-${id}`,
+        actorUid: user.uid,
+        actorName: profile?.name || user.email,
+        action: "transfer-payment-deleted",
+        targetCollection: "transferPayments",
+        targetId: id,
+        before: snapshot.data(),
+        after: null,
+      });
+      const batch = writeBatch(db);
+      batch.delete(paymentRef);
+      queueAuditEvent(batch, audit);
+      await batch.commit();
+      navigate("/transfers");
+    } catch (err) {
+      console.error(err);
+      setError("ลบใบโอนจ่ายไม่สำเร็จ กรุณาตรวจสอบสิทธิ์และลองใหม่");
+    } finally {
+      setBusy(false);
+    }
   }
 
   if (!loaded) {
@@ -186,26 +255,30 @@ export default function TransferPaymentForm() {
 
   return (
     <Layout>
-      <button onClick={() => navigate("/transfers")} className="text-sm text-inkSoft mb-4">
-        ← กลับ
-      </button>
-
-      <div className="bg-white border border-paperLine rounded-lg p-6 receipt-edge">
-        <div className="flex items-center justify-between mb-4">
-          <h1 className="font-slab text-xl">{isNew ? "สร้างใบโอนจ่ายใหม่" : `แก้ไขใบโอนจ่าย ${transferNo}`}</h1>
-          {!isNew && (
+      <div className="bg-white border border-paperLine rounded-lg p-6">
+        <FormHeader
+          title={isNew ? "สร้างใบโอนจ่ายใหม่" : `แก้ไขใบโอนจ่าย ${transferNo}`}
+          onCancel={cancelForm}
+          onSave={handleSave}
+          saving={busy}
+          saveLabel="บันทึก"
+        />
+        {!isNew && (
+          <div className="mb-4 flex justify-end">
             <Link to={`/transfers/payments/${id}/print`} target="_blank" className="text-sm border border-paperLine rounded px-3 py-1.5">
               พิมพ์ / PDF
             </Link>
-          )}
-        </div>
+          </div>
+        )}
 
         <div className="grid sm:grid-cols-2 gap-3 mb-3">
           <div>
             <label className="text-sm text-inkSoft block mb-1">โอนจากบัญชี (A)</label>
             <Combobox
+              id="payment-source-account"
               value={sourceAccountId}
               onChange={(v) => {
+                setDirty(true);
                 setSourceAccountId(v);
                 setLinkedWithdrawalRequestId("");
               }}
@@ -220,6 +293,7 @@ export default function TransferPaymentForm() {
           <div>
             <label className="text-sm text-inkSoft block mb-1">ตัดยอดกับใบเบิกเลขที่</label>
             <Combobox
+              id="payment-withdrawal-select"
               value={linkedWithdrawalRequestId}
               onChange={selectWithdrawal}
               placeholder="— เลือกใบเบิก —"
@@ -259,6 +333,7 @@ export default function TransferPaymentForm() {
                   className="w-full border border-paperLine rounded px-3 py-2.5 text-sm focus:border-teal"
                 />
                 <Combobox
+                  id={`payment-payee-mobile-${idx}`}
                   value={l.payeeAccountId}
                   onChange={(v) => updateLine(idx, "payeeAccountId", v)}
                   placeholder="— เลือกบัญชีผู้รับ —"
@@ -323,6 +398,7 @@ export default function TransferPaymentForm() {
                   </td>
                   <td className="py-1.5 pr-2">
                     <Combobox
+                      id={`payment-payee-desktop-${idx}`}
                       value={l.payeeAccountId}
                       onChange={(v) => updateLine(idx, "payeeAccountId", v)}
                       placeholder="— เลือกบัญชีผู้รับ —"
@@ -388,14 +464,7 @@ export default function TransferPaymentForm() {
 
         {error && <p className="text-sm text-rust mb-3">{error}</p>}
 
-        <div className="flex gap-2">
-          <button
-            onClick={handleSave}
-            disabled={busy}
-            className="bg-teal text-white rounded px-5 py-2.5 text-sm font-medium disabled:opacity-60"
-          >
-            {busy ? "กำลังบันทึก..." : "บันทึกใบโอนจ่าย"}
-          </button>
+        <div className="flex justify-end">
           {!isNew && (
             <button onClick={handleDelete} className="border border-rust text-rust rounded px-5 py-2.5 text-sm">
               ลบใบนี้

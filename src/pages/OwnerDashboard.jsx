@@ -6,121 +6,93 @@ import Layout from "../components/Layout";
 import StatusBadge from "../components/StatusBadge";
 import TypeBadge from "../components/TypeBadge";
 import LowFundBalanceBanner from "../components/LowFundBalanceBanner";
-import Combobox from "../components/Combobox";
-import MetricCard from "../components/MetricCard";
+import EmptyState from "../components/EmptyState";
+import Loading from "../components/ui/Loading";
 import { formatBaht, formatDateTime } from "../lib/format";
-import { ArrowUpRight, ArrowDownRight, ClipboardList } from "lucide-react";
-
-const STATUS_FILTERS = [
-  { key: "all", label: "ทั้งหมด" },
-  { key: "pending", label: "รอตรวจสอบ" },
-  { key: "approved", label: "อนุมัติแล้ว" },
-  { key: "rejected", label: "ตีกลับ" },
-  { key: "voided", label: "ยกเลิก" },
-];
+import { ClipboardCheck } from "lucide-react";
+import DashboardInsights from "../components/DashboardInsights";
+import TransactionFilterPanel from "../components/TransactionFilterPanel";
+import useTransactionFilters from "../components/useTransactionFilters";
+import { downloadCsv } from "../components/csvExport";
 
 export default function OwnerDashboard() {
   const [rows, setRows] = useState([]);
-  const [funds, setFunds] = useState({});
-  const [statusFilter, setStatusFilter] = useState("pending");
-  const [staffFilter, setStaffFilter] = useState("all");
-  const [fundFilter, setFundFilter] = useState("all");
+  const [loading, setLoading] = useState(true);
+  const [funds, setFunds] = useState([]);
+  const [topups, setTopups] = useState([]);
+  const [visibleCount, setVisibleCount] = useState(10);
 
   useEffect(() => {
     const q = query(collection(db, "transactions"), orderBy("createdAt", "desc"));
     const unsub = onSnapshot(q, (snap) => {
       setRows(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      setLoading(false);
     });
     const unsubFunds = onSnapshot(collection(db, "funds"), (snap) => {
-      const map = {};
-      snap.docs.forEach((d) => (map[d.id] = d.data().label));
-      setFunds(map);
+      setFunds(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     });
+    const unsubTopups = onSnapshot(collection(db, "fundTopups"), (snap) =>
+      setTopups(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
+    );
     return () => {
       unsub();
       unsubFunds();
+      unsubTopups();
     };
   }, []);
 
-  const staffNames = Array.from(new Set(rows.map((r) => r.createdByName))).sort();
-
-  const filtered = rows.filter((r) => {
-    if (statusFilter !== "all" && r.status !== statusFilter) return false;
-    if (staffFilter !== "all" && r.createdByName !== staffFilter) return false;
-    if (fundFilter !== "all" && r.fundId !== fundFilter) return false;
-    return true;
-  });
-
-  const totalIn = rows
-    .filter((r) => r.type === "income" && r.status !== "voided" && r.status !== "rejected")
-    .reduce((s, r) => s + r.amount, 0);
-  const totalOut = rows
-    .filter((r) => r.type === "expense" && r.status !== "voided" && r.status !== "rejected")
-    .reduce((s, r) => s + r.amount, 0);
+  const { filters, updateFilter, clearFilters, filtered, categories, authors, totals } =
+    useTransactionFilters(rows, { initialStatus: "pending" });
   const pendingCount = rows.filter((r) => r.status === "pending").length;
+  const exportRows = () => downloadCsv("รายการทั้งหมด.csv",
+    ["วันที่", "รายละเอียด", "หมวดหมู่", "ประเภท", "จำนวนเงิน", "สถานะ", "ผู้บันทึก", "งบค่าใช้จ่าย"],
+    filtered.map((row) => [
+      formatDateTime(row.createdAt),
+      row.itemDescription,
+      row.category,
+      row.type === "income" ? "รายรับ" : "รายจ่าย",
+      Number(row.amount) || 0,
+      row.status,
+      row.createdByName,
+      row.fundLabel,
+    ])
+  );
 
   return (
     <Layout>
       <LowFundBalanceBanner />
+      <DashboardInsights
+        funds={funds}
+        topups={topups}
+        transactions={rows}
+        pendingCount={pendingCount}
+      />
+      <h1 className="mb-3 text-lg font-bold">ตรวจสอบรายการทั้งหมด</h1>
+      <TransactionFilterPanel
+        filters={filters}
+        updateFilter={updateFilter}
+        clearFilters={clearFilters}
+        categories={categories}
+        authors={authors}
+        totals={totals}
+        count={filtered.length}
+        onExport={exportRows}
+      />
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <MetricCard
-          label="รายรับรวม"
-          value={formatBaht(totalIn)}
-          icon={ArrowUpRight}
-          tone="income"
-          sublabel="ไม่รวมตีกลับ/ยกเลิก"
+      {loading ? (
+        <Loading label="กำลังโหลดรายการที่ต้องตรวจสอบ" />
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          icon={ClipboardCheck}
+          title="ไม่มีรายการในตัวกรองนี้"
+          description="ลองเปลี่ยนตัวกรอง หรือกลับมาตรวจใหม่ภายหลัง"
         />
-        <MetricCard label="รายจ่ายรวม" value={formatBaht(totalOut)} icon={ArrowDownRight} tone="expense" />
-        <MetricCard
-          label="รอตรวจสอบ"
-          value={`${pendingCount} รายการ`}
-          icon={ClipboardList}
-          tone="primary"
-        />
-      </div>
-
-      <h1 className="font-slab text-lg mb-3">ตรวจสอบรายการทั้งหมด</h1>
-
-      <div className="flex flex-wrap gap-2 mb-4">
-        {STATUS_FILTERS.map((f) => (
-          <button
-            key={f.key}
-            onClick={() => setStatusFilter(f.key)}
-            className={`text-xs rounded-full px-3 py-1.5 border ${
-              statusFilter === f.key
-                ? "bg-ink text-white border-ink"
-                : "border-paperLine text-inkSoft"
-            }`}
-          >
-            {f.label}
-          </button>
-        ))}
-        <Combobox
-          value={staffFilter}
-          onChange={setStaffFilter}
-          options={[{ value: "all", label: "พนักงานทุกคน" }, ...staffNames.map((n) => ({ value: n, label: n }))]}
-          className="w-48"
-        />
-        <Combobox
-          value={fundFilter}
-          onChange={setFundFilter}
-          options={[
-            { value: "all", label: "ทุกฝั่ง" },
-            ...Object.entries(funds).map(([id, label]) => ({ value: id, label })),
-          ]}
-          className="w-48"
-        />
-      </div>
-
-      {filtered.length === 0 ? (
-        <p className="text-sm text-inkSoft">ไม่มีรายการในหมวดนี้</p>
       ) : (
         <div className="space-y-3">
-          {filtered.map((r) => (
+          {filtered.slice(0, visibleCount).map((r) => (
             <div
               key={r.id}
-              className="bg-white border border-paperLine rounded-lg p-4 receipt-edge hover:border-teal flex items-center gap-3"
+              className="bg-white border border-paperLine rounded-xl p-4 shadow-sm hover:border-blue-300 flex items-center gap-3"
             >
               <Link to={`/transaction/${r.id}`} className="flex-1 min-w-0">
                 <div className="flex justify-between items-start">
@@ -133,11 +105,16 @@ export default function OwnerDashboard() {
                     </div>
                     <div className="font-medium truncate">{r.itemDescription}</div>
                     <div className="text-xs text-inkSoft mt-1">{formatDateTime(r.createdAt)}</div>
+                    {r.status === "pending" && (
+                      <span className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-blue-700">
+                        <ClipboardCheck size={14} /> เปิดตรวจรายการ
+                      </span>
+                    )}
                   </div>
                   <div className="text-right">
                     <div
                       className={`font-nums text-lg ${
-                        r.type === "income" ? "text-teal" : "text-rust"
+                        r.type === "income" ? "text-green-800" : "text-red-700"
                       }`}
                     >
                       {r.type === "income" ? "+" : "-"}
@@ -148,6 +125,13 @@ export default function OwnerDashboard() {
                     </div>
                   </div>
                 </div>
+                {(r.receiptPhotoURLs?.[0] || r.receiptPhotoURL) && (
+                  <img
+                    src={r.receiptPhotoURLs?.[0] || r.receiptPhotoURL}
+                    alt="รูปหลักฐาน"
+                    className="mt-3 h-16 w-16 rounded-lg border border-paperLine object-cover"
+                  />
+                )}
               </Link>
               {r.status === "approved" && (
                 <Link
@@ -160,6 +144,15 @@ export default function OwnerDashboard() {
               )}
             </div>
           ))}
+          {filtered.length > visibleCount && (
+            <button
+              type="button"
+              onClick={() => setVisibleCount((count) => count + 10)}
+              className="w-full rounded-lg border border-paperLine bg-white py-3 text-sm font-medium text-blue-700"
+            >
+              ดูเพิ่มเติม ({filtered.length - visibleCount} รายการ)
+            </button>
+          )}
         </div>
       )}
     </Layout>

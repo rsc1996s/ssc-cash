@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
+import FeedbackProvider from "./components/ui/FeedbackProvider";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import PendingApproval from "./pages/PendingApproval";
@@ -19,12 +20,17 @@ import WithdrawalRequestPrint from "./pages/WithdrawalRequestPrint";
 import TransferPaymentForm from "./pages/TransferPaymentForm";
 import TransferPaymentPrint from "./pages/TransferPaymentPrint";
 import ChangePin from "./pages/ChangePin";
+import DailyClosings from "./pages/DailyClosings";
+import ActivityHistory from "./pages/ActivityHistory";
+import PageTransition from "./components/PageTransition";
 
 export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <Routes>
+        <FeedbackProvider>
+          <PageTransition>
+          <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/pending" element={<PendingApproval />} />
@@ -81,6 +87,22 @@ export default function App() {
             element={
               <ProtectedRoute requireRole={["owner", "guest"]}>
                 <Reports />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/daily-closings"
+            element={
+              <ProtectedRoute requireRole={["owner", "staff"]}>
+                <DailyClosings />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/activity"
+            element={
+              <ProtectedRoute requireRole="owner">
+                <ActivityHistory />
               </ProtectedRoute>
             }
           />
@@ -164,7 +186,9 @@ export default function App() {
               </ProtectedRoute>
             }
           />
-        </Routes>
+          </Routes>
+          </PageTransition>
+        </FeedbackProvider>
       </AuthProvider>
     </BrowserRouter>
   );

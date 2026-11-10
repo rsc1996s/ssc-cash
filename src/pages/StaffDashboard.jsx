@@ -9,50 +9,24 @@ import TypeBadge from "../components/TypeBadge";
 import EmptyState from "../components/EmptyState";
 import LowFundBalanceBanner from "../components/LowFundBalanceBanner";
 import MetricCard from "../components/MetricCard";
-import Combobox from "../components/Combobox";
 import { formatBaht, formatDateTime, PAYMENT_LABEL } from "../lib/format";
 import {
   ArrowUpRight,
   ArrowDownRight,
   Wallet,
-  Search,
   Receipt,
   SearchX,
-  PlusCircle,
-  X,
 } from "lucide-react";
-
-const DATE_PRESETS = [
-  { key: "all", label: "ทั้งหมด" },
-  { key: "today", label: "วันนี้" },
-  { key: "7d", label: "7 วันล่าสุด" },
-  { key: "month", label: "เดือนนี้" },
-];
-
-function withinDatePreset(date, preset) {
-  if (preset === "all" || !date) return true;
-  const now = new Date();
-  const d = date.toDate ? date.toDate() : new Date(date);
-  if (preset === "today") {
-    return d.toDateString() === now.toDateString();
-  }
-  if (preset === "7d") {
-    const cutoff = new Date(now);
-    cutoff.setDate(cutoff.getDate() - 7);
-    return d >= cutoff;
-  }
-  if (preset === "month") {
-    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-  }
-  return true;
-}
+import TransactionFilterPanel from "../components/TransactionFilterPanel";
+import useTransactionFilters from "../components/useTransactionFilters";
+import { downloadCsv } from "../components/csvExport";
 
 export default function StaffDashboard() {
   const { user } = useAuth();
   const [rows, setRows] = useState([]);
-  const [search, setSearch] = useState("");
-  const [datePreset, setDatePreset] = useState("all");
-  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
+  const [visibleCount, setVisibleCount] = useState(10);
 
   useEffect(() => {
     if (!user) return;
@@ -61,124 +35,99 @@ export default function StaffDashboard() {
       where("createdBy", "==", user.uid),
       orderBy("createdAt", "desc")
     );
-    const unsub = onSnapshot(q, (snap) => {
-      setRows(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-    });
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        setRows(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        setLoadError(null);
+        setLoading(false);
+      },
+      (error) => {
+        console.error("โหลดรายการธุรกรรมไม่สำเร็จ:", error);
+        const indexUrl = error.message.match(
+          /https:\/\/console\.firebase\.google\.com\/[^\s]+/
+        )?.[0]?.replace(/[).,]+$/, "");
+        setLoadError({
+          message: "โหลดรายการไม่สำเร็จ กรุณาตรวจสอบการเชื่อมต่อและสิทธิ์ Firestore",
+          indexUrl,
+          needsIndex: error.code === "failed-precondition",
+        });
+        setLoading(false);
+      }
+    );
     return () => unsub();
   }, [user]);
 
-  const totalIn = rows.filter((r) => r.type === "income").reduce((s, r) => s + r.amount, 0);
-  const totalOut = rows.filter((r) => r.type === "expense").reduce((s, r) => s + r.amount, 0);
-
-  const categoryOptions = useMemo(() => {
-    const cats = Array.from(new Set(rows.map((r) => r.category).filter(Boolean))).sort();
-    return [{ value: "all", label: "ทุกหมวดหมู่" }, ...cats.map((c) => ({ value: c, label: c }))];
-  }, [rows]);
-
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return rows.filter((r) => {
-      if (categoryFilter !== "all" && r.category !== categoryFilter) return false;
-      if (!withinDatePreset(r.createdAt, datePreset)) return false;
-      if (q) {
-        const haystack = `${r.itemDescription || ""} ${r.note || ""} ${r.category || ""}`.toLowerCase();
-        if (!haystack.includes(q)) return false;
-      }
-      return true;
-    });
-  }, [rows, search, datePreset, categoryFilter]);
-
-  const hasActiveFilters = search.trim() !== "" || datePreset !== "all" || categoryFilter !== "all";
-
-  function clearFilters() {
-    setSearch("");
-    setDatePreset("all");
-    setCategoryFilter("all");
-  }
+  const { filters, updateFilter, clearFilters, filtered, categories, authors, totals } =
+    useTransactionFilters(rows);
+  const exportRows = () => downloadCsv("รายการของฉัน.csv",
+    ["วันที่", "รายละเอียด", "หมวดหมู่", "ประเภท", "จำนวนเงิน", "สถานะ", "ผู้บันทึก", "งบค่าใช้จ่าย", "ช่องทาง"],
+    filtered.map((row) => [
+      formatDateTime(row.createdAt),
+      row.itemDescription,
+      row.category,
+      row.type === "income" ? "รายรับ" : "รายจ่าย",
+      Number(row.amount) || 0,
+      row.status,
+      row.createdByName,
+      row.fundLabel,
+      PAYMENT_LABEL[row.paymentMethod],
+    ])
+  );
 
   return (
     <Layout>
       <LowFundBalanceBanner />
 
-      {/* สรุปยอด */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <MetricCard label="รายรับรวม" value={formatBaht(totalIn)} icon={ArrowUpRight} tone="income" />
-        <MetricCard label="รายจ่ายรวม" value={formatBaht(totalOut)} icon={ArrowDownRight} tone="expense" />
-        <MetricCard label="คงเหลือสุทธิ" value={formatBaht(totalIn - totalOut)} icon={Wallet} tone="primary" />
+      <div className="grid grid-cols-2 gap-3 mb-5 sm:gap-4">
+        <div className="col-span-2">
+          <MetricCard label="ยอดคงเหลือสุทธิ" value={`${formatBaht(totals.income - totals.expense)} บาท`} icon={Wallet} tone="primary" />
+        </div>
+        <MetricCard label="รายรับรวม" value={formatBaht(totals.income)} icon={ArrowUpRight} tone="income" />
+        <MetricCard label="รายจ่ายรวม" value={formatBaht(totals.expense)} icon={ArrowDownRight} tone="expense" />
       </div>
 
-      {/* Header: ชื่อหน้า + ค้นหา + ตัวกรอง + ปุ่มบันทึกใหม่ */}
-      <div className="bg-white border border-paperLine rounded-xl shadow-sm p-4 mb-4">
-        <div className="flex flex-col lg:flex-row lg:items-center gap-3">
-          <h1 className="font-slab text-lg shrink-0">รายการของฉัน</h1>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h1 className="text-lg font-bold">รายการของฉัน</h1>
+      </div>
+      <TransactionFilterPanel
+        filters={filters}
+        updateFilter={updateFilter}
+        clearFilters={clearFilters}
+        categories={categories}
+        authors={authors}
+        totals={totals}
+        count={filtered.length}
+        showAuthor={false}
+        onExport={exportRows}
+      />
 
-          <div className="flex-1 flex flex-col sm:flex-row gap-2 sm:items-center min-w-0">
-            <div className="relative flex-1 min-w-[160px]">
-              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-inkSoft" />
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="ค้นหารายละเอียด, หมวดหมู่, หมายเหตุ..."
-                className="w-full border border-paperLine rounded-lg pl-9 pr-3 py-2 text-sm focus:border-teal"
-              />
-            </div>
-            <Combobox
-              value={categoryFilter}
-              onChange={setCategoryFilter}
-              options={categoryOptions}
-              className="w-full sm:w-44 shrink-0"
-            />
-          </div>
-
-          <Link
-            to="/new"
-            className="flex items-center justify-center gap-1.5 bg-teal hover:bg-teal-dark text-white rounded-lg px-4 py-2 text-sm font-medium shrink-0 transition-colors"
-          >
-            <PlusCircle size={17} />
-            บันทึกใหม่
-          </Link>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-1.5 mt-3 pt-3 border-t border-paperLine">
-          {DATE_PRESETS.map((p) => (
-            <button
-              key={p.key}
-              onClick={() => setDatePreset(p.key)}
-              className={`text-xs rounded-full px-3 py-1.5 border transition-colors ${
-                datePreset === p.key
-                  ? "bg-ink text-white border-ink"
-                  : "border-paperLine text-inkSoft hover:border-teal hover:text-teal"
-              }`}
+      {loadError ? (
+        <div role="alert" className="bg-rust/5 border border-rust/30 rounded-lg p-4 text-sm text-rust">
+          <p>{loadError.needsIndex
+            ? "ยังไม่ได้สร้าง Firestore index ที่จำเป็น จึงโหลดรายการไม่ได้"
+            : loadError.message}</p>
+          {loadError.indexUrl && (
+            <a
+              href={loadError.indexUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-block mt-2 underline font-medium"
             >
-              {p.label}
-            </button>
-          ))}
-          {hasActiveFilters && (
-            <button
-              onClick={clearFilters}
-              className="flex items-center gap-1 text-xs text-rust ml-1"
-            >
-              <X size={13} />
-              ล้างตัวกรอง
-            </button>
+              เปิด Firebase Console เพื่อสร้าง index
+            </a>
           )}
         </div>
-      </div>
-
-      {rows.length === 0 ? (
+      ) : loading ? (
+        <div className="space-y-3" role="status" aria-label="กำลังโหลดรายการ">
+          <div className="h-20 animate-pulse rounded-xl bg-blue-100" />
+          <div className="h-20 animate-pulse rounded-xl bg-blue-100" />
+        </div>
+      ) : rows.length === 0 ? (
         <EmptyState
           icon={Receipt}
           title="ยังไม่มีรายการ"
-          description='กดปุ่ม "บันทึกใหม่" ด้านบนเพื่อเริ่มบันทึกรายรับ-รายจ่ายรายการแรกของคุณ'
-          action={
-            <Link
-              to="/new"
-              className="inline-flex items-center gap-1.5 bg-teal hover:bg-teal-dark text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors"
-            >
-              <PlusCircle size={16} />
-              บันทึกรายการแรก
-            </Link>
-          }
+          description="แตะปุ่ม + ด้านล่างเพื่อบันทึกรายการแรก"
         />
       ) : filtered.length === 0 ? (
         <EmptyState
@@ -196,14 +145,14 @@ export default function StaffDashboard() {
         />
       ) : (
         <div className="space-y-3">
-          {filtered.map((r) => (
+          {filtered.slice(0, visibleCount).map((r) => (
             <div
               key={r.id}
               className="bg-white border border-paperLine rounded-xl shadow-sm p-4 hover:border-teal transition-colors flex items-center gap-3"
             >
               <span
                 className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
-                  r.type === "income" ? "bg-teal-light text-teal" : "bg-rust-light text-rust"
+                  r.type === "income" ? "bg-green-50 text-green-800" : "bg-red-50 text-red-700"
                 }`}
               >
                 {r.type === "income" ? <ArrowUpRight size={18} /> : <ArrowDownRight size={18} />}
@@ -228,7 +177,7 @@ export default function StaffDashboard() {
                   <div className="text-right shrink-0">
                     <div
                       className={`font-nums text-lg font-semibold ${
-                        r.type === "income" ? "text-teal" : "text-rust"
+                        r.type === "income" ? "text-green-800" : "text-red-700"
                       }`}
                     >
                       {r.type === "income" ? "+" : "-"}
@@ -252,6 +201,15 @@ export default function StaffDashboard() {
               )}
             </div>
           ))}
+          {filtered.length > visibleCount && (
+            <button
+              type="button"
+              onClick={() => setVisibleCount((count) => count + 10)}
+              className="w-full rounded-lg border border-paperLine bg-white py-3 text-sm font-medium text-blue-700"
+            >
+              ดูเพิ่มเติม ({filtered.length - visibleCount} รายการ)
+            </button>
+          )}
         </div>
       )}
     </Layout>

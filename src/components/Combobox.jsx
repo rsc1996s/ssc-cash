@@ -15,6 +15,7 @@ export default function Combobox({
   searchPlaceholder = "พิมพ์เพื่อค้นหา...",
   className = "",
   disabled = false,
+  id,
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -78,6 +79,7 @@ export default function Combobox({
     <div ref={rootRef} className={`relative ${className}`}>
       <button
         type="button"
+        id={id}
         disabled={disabled}
         onClick={() => setOpen((o) => !o)}
         className="w-full flex items-center justify-between gap-2 border border-paperLine rounded px-3 py-2 text-sm bg-white text-left hover:border-teal focus:border-teal disabled:opacity-50 disabled:cursor-not-allowed"

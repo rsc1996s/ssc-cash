@@ -44,6 +44,7 @@ export function AuthProvider({ children }) {
     isStaff: profile?.role === "staff",
     isGuest: profile?.role === "guest",
     isPending: profile?.role === "pending",
+    isDisabled: profile?.disabled === true,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

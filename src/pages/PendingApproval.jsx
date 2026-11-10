@@ -22,8 +22,8 @@ export default function PendingApproval() {
   }
   return (
     <div className="min-h-screen flex items-center justify-center bg-paper px-4">
-      <div className="w-full max-w-sm bg-white border border-paperLine rounded-lg p-6 text-center receipt-edge">
-        <div className="stamp text-amber inline-flex mb-4">รออนุมัติ</div>
+      <div className="w-full max-w-sm bg-white border border-paperLine rounded-lg p-6 text-center">
+        <div className="mb-4 inline-flex rounded-full bg-amber-light px-3 py-1 text-sm font-semibold text-amber">รออนุมัติ</div>
         <h1 className="font-slab text-lg mb-2">บัญชีของคุณรออนุมัติ</h1>
         <p className="text-sm text-inkSoft mb-5">
           กรุณาแจ้งเจ้าของร้านให้เข้าไปกำหนดสิทธิ์การใช้งานให้คุณในเมนู "ผู้ใช้งาน"

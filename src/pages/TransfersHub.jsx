@@ -12,6 +12,7 @@ export default function TransfersHub() {
   const [tab, setTab] = useState("withdrawals");
   const [withdrawals, setWithdrawals] = useState([]);
   const [payments, setPayments] = useState([]);
+  const [visibleCount, setVisibleCount] = useState(10);
 
   useEffect(() => {
     const unsub1 = onSnapshot(collection(db, "withdrawalRequests"), (snap) =>
@@ -53,7 +54,7 @@ export default function TransfersHub() {
           <button
             onClick={() => setTab("withdrawals")}
             className={`text-sm rounded-full px-4 py-1.5 border ${
-              tab === "withdrawals" ? "bg-ink text-white border-ink" : "border-paperLine text-inkSoft"
+              tab === "withdrawals" ? "bg-blue-600 text-white border-blue-600" : "border-paperLine text-inkSoft"
             }`}
           >
             ใบเบิกเงินโอน
@@ -61,7 +62,7 @@ export default function TransfersHub() {
           <button
             onClick={() => setTab("payments")}
             className={`text-sm rounded-full px-4 py-1.5 border ${
-              tab === "payments" ? "bg-ink text-white border-ink" : "border-paperLine text-inkSoft"
+              tab === "payments" ? "bg-blue-600 text-white border-blue-600" : "border-paperLine text-inkSoft"
             }`}
           >
             ใบโอนจ่าย
@@ -80,13 +81,13 @@ export default function TransfersHub() {
             <p className="text-sm text-inkSoft">ยังไม่มีใบเบิก</p>
           ) : (
             <div className="space-y-3">
-              {withdrawals.map((w) => {
+              {withdrawals.slice(0, visibleCount).map((w) => {
                 const total = w.totalAmount ?? lineTotal(w.lines);
                 const remain = isOwner ? remainingBalance(w, payments) : null;
                 return (
                   <div
                     key={w.id}
-                    className="bg-white border border-paperLine rounded-lg p-4 receipt-edge hover:border-teal flex items-center gap-3"
+                    className="bg-white border border-paperLine rounded-lg p-4 hover:border-teal flex items-center gap-3"
                   >
                     <Link to={`/transfers/withdrawals/${w.id}`} className="flex-1 min-w-0">
                       <div className="flex justify-between items-start">
@@ -122,6 +123,11 @@ export default function TransfersHub() {
                   </div>
                 );
               })}
+              {withdrawals.length > visibleCount && (
+                <button type="button" onClick={() => setVisibleCount((count) => count + 10)} className="w-full rounded-lg border border-paperLine bg-white py-3 text-sm text-blue-700">
+                  ดูเพิ่มเติม ({withdrawals.length - visibleCount})
+                </button>
+              )}
             </div>
           )}
         </>
@@ -136,10 +142,10 @@ export default function TransfersHub() {
             <p className="text-sm text-inkSoft">ยังไม่มีใบโอนจ่าย</p>
           ) : (
             <div className="space-y-3">
-              {payments.map((p) => (
+              {payments.slice(0, visibleCount).map((p) => (
                 <div
                   key={p.id}
-                  className="bg-white border border-paperLine rounded-lg p-4 receipt-edge hover:border-teal flex items-center gap-3"
+                  className="bg-white border border-paperLine rounded-lg p-4 hover:border-teal flex items-center gap-3"
                 >
                   <Link to={`/transfers/payments/${p.id}`} className="flex-1 min-w-0">
                     <div className="flex justify-between items-start">
@@ -164,6 +170,11 @@ export default function TransfersHub() {
                   </Link>
                 </div>
               ))}
+              {payments.length > visibleCount && (
+                <button type="button" onClick={() => setVisibleCount((count) => count + 10)} className="w-full rounded-lg border border-paperLine bg-white py-3 text-sm text-blue-700">
+                  ดูเพิ่มเติม ({payments.length - visibleCount})
+                </button>
+              )}
             </div>
           )}
         </>

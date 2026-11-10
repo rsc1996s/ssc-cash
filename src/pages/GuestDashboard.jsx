@@ -6,20 +6,28 @@ import Layout from "../components/Layout";
 import StatusBadge from "../components/StatusBadge";
 import TypeBadge from "../components/TypeBadge";
 import { formatBaht, formatDateTime } from "../lib/format";
-import { currentFundBalance } from "../lib/ledger";
-import Combobox from "../components/Combobox";
+import EmptyState from "../components/EmptyState";
+import Loading from "../components/ui/Loading";
+import { Receipt, SearchX } from "lucide-react";
+import DashboardInsights from "../components/DashboardInsights";
+import TransactionFilterPanel from "../components/TransactionFilterPanel";
+import useTransactionFilters from "../components/useTransactionFilters";
+import { downloadCsv } from "../components/csvExport";
 
 export default function GuestDashboard() {
   const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [topups, setTopups] = useState([]);
   const [funds, setFunds] = useState([]);
-  const [staffFilter, setStaffFilter] = useState("all");
-  const [fundFilter, setFundFilter] = useState("all");
+  const [visibleCount, setVisibleCount] = useState(10);
 
   useEffect(() => {
     // guest อ่านได้เฉพาะรายการที่ "อนุมัติแล้ว" เท่านั้น (บังคับที่ Firestore rules ด้วย)
     const q = query(collection(db, "transactions"), where("status", "==", "approved"));
-    const unsub1 = onSnapshot(q, (snap) => setRows(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    const unsub1 = onSnapshot(q, (snap) => {
+      setRows(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      setLoading(false);
+    });
     const unsub2 = onSnapshot(collection(db, "funds"), (snap) =>
       setFunds(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
     );
@@ -33,54 +41,64 @@ export default function GuestDashboard() {
     };
   }, []);
 
-  const staffNames = Array.from(new Set(rows.map((r) => r.createdByName))).sort();
-
-  const filtered = rows
-    .filter((r) => (staffFilter === "all" ? true : r.createdByName === staffFilter))
-    .filter((r) => (fundFilter === "all" ? true : r.fundId === fundFilter))
-    .sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
+  const { filters, updateFilter, clearFilters, filtered, categories, authors, totals } =
+    useTransactionFilters(rows);
+  const filteredRows = filtered.slice().sort(
+    (a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0)
+  );
+  const exportRows = () => downloadCsv("รายการที่อนุมัติ.csv",
+    ["วันที่", "รายละเอียด", "หมวดหมู่", "ประเภท", "จำนวนเงิน", "สถานะ", "ผู้บันทึก", "งบค่าใช้จ่าย"],
+    filteredRows.map((row) => [
+      formatDateTime(row.createdAt),
+      row.itemDescription,
+      row.category,
+      row.type === "income" ? "รายรับ" : "รายจ่าย",
+      Number(row.amount) || 0,
+      "อนุมัติแล้ว",
+      row.createdByName,
+      row.fundLabel,
+    ])
+  );
 
   return (
     <Layout>
-      <div className="grid sm:grid-cols-2 gap-3 mb-6">
-        {funds.map((f) => (
-          <div key={f.id} className="bg-white border border-paperLine rounded-lg p-4 receipt-edge">
-            <div className="text-xs text-inkSoft mb-1">{f.label}</div>
-            <div className="font-nums text-xl">{formatBaht(currentFundBalance(f, topups, rows))} บาท</div>
-          </div>
-        ))}
-      </div>
+      <DashboardInsights funds={funds} topups={topups} transactions={rows} />
 
-      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <h1 className="font-slab text-lg">รายการที่อนุมัติแล้ว (ดูอย่างเดียว)</h1>
-        <Link to="/reports" className="text-sm border border-paperLine rounded px-3 py-1.5">
-          ดูรายงาน Statement
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <h1 className="font-slab text-lg">รายการที่อนุมัติแล้ว</h1>
+        <Link to="/reports" className="rounded-lg border border-paperLine px-3 py-2 text-sm text-blue-700">
+          ดูรายงาน
         </Link>
       </div>
 
-      <div className="flex flex-wrap gap-2 mb-4">
-        <Combobox
-          value={staffFilter}
-          onChange={setStaffFilter}
-          options={[{ value: "all", label: "พนักงานทุกคน" }, ...staffNames.map((n) => ({ value: n, label: n }))]}
-          className="w-48"
-        />
-        <Combobox
-          value={fundFilter}
-          onChange={setFundFilter}
-          options={[{ value: "all", label: "ทุกฝั่ง" }, ...funds.map((f) => ({ value: f.id, label: f.label }))]}
-          className="w-48"
-        />
-      </div>
+      <TransactionFilterPanel
+        filters={filters}
+        updateFilter={updateFilter}
+        clearFilters={clearFilters}
+        categories={categories}
+        authors={authors}
+        funds={funds}
+        totals={totals}
+        count={filteredRows.length}
+        showStatus
+        statusOptions={[{ value: "approved", label: "อนุมัติแล้ว" }]}
+        onExport={exportRows}
+      />
 
-      {filtered.length === 0 ? (
-        <p className="text-sm text-inkSoft">ยังไม่มีรายการที่อนุมัติแล้ว</p>
+      {loading ? (
+        <Loading label="กำลังโหลดรายการที่อนุมัติ" />
+      ) : filteredRows.length === 0 ? (
+        <EmptyState
+          icon={rows.length ? SearchX : Receipt}
+          title={rows.length ? "ไม่พบรายการที่ตรงกัน" : "ยังไม่มีรายการที่อนุมัติแล้ว"}
+          description={rows.length ? "ลองเปลี่ยนคำค้นหาหรือตัวกรอง" : "รายการที่เจ้าของร้านอนุมัติจะแสดงที่นี่"}
+        />
       ) : (
         <div className="space-y-3">
-          {filtered.map((r) => (
+          {filteredRows.slice(0, visibleCount).map((r) => (
             <div
               key={r.id}
-              className="bg-white border border-paperLine rounded-lg p-4 receipt-edge hover:border-teal flex items-center gap-3"
+              className="bg-white border border-paperLine rounded-xl p-4 shadow-sm hover:border-blue-300 flex items-center gap-3"
             >
               <Link to={`/transaction/${r.id}`} className="flex-1 min-w-0">
                 <div className="flex justify-between items-start">
@@ -97,7 +115,7 @@ export default function GuestDashboard() {
                   <div className="text-right">
                     <div
                       className={`font-nums text-lg ${
-                        r.type === "income" ? "text-teal" : "text-rust"
+                        r.type === "income" ? "text-green-800" : "text-red-700"
                       }`}
                     >
                       {r.type === "income" ? "+" : "-"}
@@ -118,6 +136,15 @@ export default function GuestDashboard() {
               </Link>
             </div>
           ))}
+          {filteredRows.length > visibleCount && (
+            <button
+              type="button"
+              onClick={() => setVisibleCount((count) => count + 10)}
+              className="w-full rounded-lg border border-paperLine bg-white py-3 text-sm font-medium text-blue-700"
+            >
+              ดูเพิ่มเติม ({filteredRows.length - visibleCount} รายการ)
+            </button>
+          )}
         </div>
       )}
     </Layout>

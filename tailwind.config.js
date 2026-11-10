@@ -4,28 +4,37 @@ export default {
   theme: {
     extend: {
       colors: {
-        paper: "#E7E8E1",
-        paperLine: "#D3D1C6",
-        ink: "#1B2A38",
-        inkSoft: "#4A5A68",
+        paper: "#F5F9FF",
+        paperLine: "#D7E3F3",
+        ink: "#172B4D",
+        inkSoft: "#53657A",
         teal: {
-          DEFAULT: "#1F6F5C",
-          dark: "#154D40",
-          light: "#E4F0EC",
+          DEFAULT: "#2563EB",
+          dark: "#1D4ED8",
+          light: "#EFF6FF",
         },
         amber: {
-          DEFAULT: "#C8891C",
-          light: "#FBF0DC",
+          DEFAULT: "#854D0E",
+          light: "#FEF3C7",
         },
         rust: {
-          DEFAULT: "#A83232",
-          light: "#F7E4E2",
+          DEFAULT: "#B91C1C",
+          light: "#FEF2F2",
+        },
+        sky: {
+          500: "#0EA5E9",
+          50: "#F0F9FF",
         },
       },
       fontFamily: {
-        slab: ["'Roboto Slab'", "serif"],
-        sans: ["Inter", "system-ui", "sans-serif"],
-        mono: ["'IBM Plex Mono'", "monospace"],
+        slab: ["'Noto Sans Thai'", "system-ui", "sans-serif"],
+        sans: ["'Noto Sans Thai'", "system-ui", "sans-serif"],
+        mono: ["'Noto Sans Thai'", "system-ui", "sans-serif"],
+      },
+      borderRadius: {
+        DEFAULT: "0.75rem",
+        lg: "0.875rem",
+        xl: "1rem",
       },
     },
   },
