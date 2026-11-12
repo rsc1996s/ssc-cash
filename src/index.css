@@ -7,6 +7,7 @@ body {
   background: #F5F9FF;
   color: #172B4D;
   font-family: "Noto Sans Thai", system-ui, sans-serif;
+  font-size: 1rem;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -23,7 +24,7 @@ body,
 }
 
 .page-transition-back {
-  animation-name: slide-page-out;
+  animation-name: slide-page-in-from-left;
 }
 
 @keyframes slide-page-in {
@@ -31,9 +32,9 @@ body,
   to { transform: translateX(0); }
 }
 
-@keyframes slide-page-out {
-  from { transform: translateX(0); }
-  to { transform: translateX(100%); }
+@keyframes slide-page-in-from-left {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
 }
 
 .font-nums {
@@ -41,13 +42,31 @@ body,
   font-weight: 600;
 }
 
+* {
+  font-family: inherit;
+}
+
 input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
 select,
 textarea {
   min-height: 44px;
+  padding: 0.625rem 0.75rem;
   border-color: #D7E3F3;
   border-radius: 0.75rem;
   background-color: #fff;
+  color: #172B4D;
+  font-size: 1rem;
+  line-height: 1.5rem;
+}
+
+textarea {
+  min-height: 5.5rem;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #53657A;
+  opacity: 1;
 }
 
 button {
@@ -63,24 +82,73 @@ button {
 .text-\[10\.5px\],
 .text-\[11px\] {
   font-size: 0.75rem;
+  line-height: 1.25rem;
 }
 
 /* Focus visibility */
 :focus-visible {
-  outline: 2px solid #2563EB;
+  outline: 3px solid #1D4ED8;
   outline-offset: 2px;
 }
 
+@page {
+  size: A4 portrait;
+  margin: 12mm;
+  @bottom-right {
+    content: "หน้า " counter(page) " / " counter(pages);
+    color: #53657A;
+    font-family: "Noto Sans Thai", system-ui, sans-serif;
+    font-size: 9pt;
+  }
+}
+
 @media print {
+  *,
+  *::before,
+  *::after {
+    print-color-adjust: exact !important;
+    -webkit-print-color-adjust: exact !important;
+  }
+  html,
+  body,
+  #root {
+    min-width: 0 !important;
+    min-height: 0 !important;
+    background: white !important;
+  }
   .no-print {
     display: none !important;
   }
   body {
     background: white !important;
   }
+  .print-document {
+    width: auto !important;
+    max-width: none !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
   .print-sheet {
     box-shadow: none !important;
     border: none !important;
+  }
+  .withdrawal-report-table {
+    border-collapse: collapse;
+    page-break-inside: auto;
+  }
+  .withdrawal-report-table thead {
+    display: table-header-group;
+  }
+  .withdrawal-report-table tr,
+  .print-row {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .print-signatures,
+  .print-metadata {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 }
 
@@ -90,9 +158,14 @@ button {
     transition-duration: 0.001ms !important;
   }
 
-  @media (max-width: 1023px) {
-    body {
-      padding-bottom: env(safe-area-inset-bottom);
-    }
+  .page-transition {
+    animation: none !important;
+    will-change: auto;
+  }
+}
+
+@media (max-width: 1023px) {
+  body {
+    padding-bottom: env(safe-area-inset-bottom);
   }
 }

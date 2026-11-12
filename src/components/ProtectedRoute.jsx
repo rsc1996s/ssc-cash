@@ -23,7 +23,7 @@ export default function ProtectedRoute({ children, requireRole }) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-paper px-4">
         <div className="max-w-sm bg-white border border-paperLine rounded-lg p-6 text-center">
-          <h1 className="font-slab text-lg mb-2">บัญชีถูกปิดใช้งาน</h1>
+          <h1 className="mb-2 text-lg font-semibold">บัญชีถูกปิดใช้งาน</h1>
           <p className="text-sm text-inkSoft mb-4">กรุณาติดต่อเจ้าของร้านเพื่อขอเปิดใช้งานอีกครั้ง</p>
           <button
             onClick={() => signOut(auth)}

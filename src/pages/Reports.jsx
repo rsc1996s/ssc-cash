@@ -10,6 +10,8 @@ import { downloadCsv } from "../components/csvExport";
 import useTransactionFilters from "../components/useTransactionFilters";
 import TransactionFilterPanel from "../components/TransactionFilterPanel";
 import Loading from "../components/ui/Loading";
+import SegmentedTabs from "../components/ui/SegmentedTabs";
+import SearchPicker from "../components/ui/SearchPicker";
 import {
   Cell,
   Pie,
@@ -155,42 +157,28 @@ export default function Reports() {
         )}
       </div>
 
-      <div role="tablist" aria-label="ส่วนของรายงาน" className="no-print mb-4 flex gap-2 overflow-x-auto">
-        {[
-          ["statement", "Statement"],
-          ["transactions", `รายการ (${filtered.length})`],
-          ["categories", "หมวดหมู่"],
-        ].map(([value, label]) => (
-          <button
-            type="button"
-            role="tab"
-            aria-selected={reportTab === value}
-            key={value}
-            onClick={() => setReportTab(value)}
-            className={`min-h-11 shrink-0 rounded-full border px-4 text-sm ${
-              reportTab === value ? "border-blue-600 bg-blue-600 text-white" : "border-paperLine bg-white text-inkSoft"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <SegmentedTabs
+        value={reportTab}
+        onChange={setReportTab}
+        ariaLabel="ส่วนของรายงาน"
+        className="no-print mb-4"
+        options={[
+          { value: "statement", label: "Statement" },
+          { value: "transactions", label: `รายการ (${filtered.length})` },
+          { value: "categories", label: "หมวดหมู่" },
+        ]}
+      />
 
       <div className="no-print mb-4 rounded-xl border border-paperLine bg-white p-4 shadow-sm">
         <label className="text-xs text-inkSoft block mb-1">เลือกฝั่งเงินหมุนเวียน</label>
-        <div className="flex flex-wrap gap-2 mb-3">
-          {funds.map((f) => (
-            <button
-              key={f.id}
-              onClick={() => setFundId(f.id)}
-              className={`text-xs rounded-full px-3 py-1.5 border ${
-                fundId === f.id ? "bg-blue-600 text-white border-blue-600" : "border-paperLine text-inkSoft"
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
+        <SearchPicker
+          value={fundId}
+          onChange={setFundId}
+          options={funds.map((item) => ({ value: item.id, label: item.label }))}
+          placeholder="เลือกงบค่าใช้จ่าย"
+          ariaLabel="งบค่าใช้จ่าย"
+          className="mb-3"
+        />
 
       </div>
 

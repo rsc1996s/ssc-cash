@@ -31,7 +31,7 @@ const TONE_STYLES = {
 export default function MetricCard({ label, value, icon: Icon, tone = "neutral", sublabel }) {
   const s = TONE_STYLES[tone] || TONE_STYLES.neutral;
   return (
-    <Card className={`p-5 ${s.card}`}>
+    <Card className={`p-4 sm:p-5 ${s.card}`}>
       <div className="flex items-center justify-between mb-3">
         <div className={`text-sm ${s.label}`}>{label}</div>
         {Icon && (
@@ -40,8 +40,8 @@ export default function MetricCard({ label, value, icon: Icon, tone = "neutral",
           </span>
         )}
       </div>
-      <div className={`font-nums text-2xl sm:text-3xl font-semibold leading-tight ${s.value}`}>{value}</div>
-      {sublabel && <div className={`text-xs mt-1 ${s.label}`}>{sublabel}</div>}
+      <div className={`font-nums text-2xl font-semibold leading-tight sm:text-3xl ${s.value}`}>{value}</div>
+      {sublabel && <div className={`mt-1 text-xs ${s.label}`}>{sublabel}</div>}
     </Card>
   );
 }

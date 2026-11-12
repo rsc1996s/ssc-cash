@@ -6,6 +6,7 @@ import { useAuth } from "../context/AuthContext";
 import Layout from "../components/Layout";
 import { formatBaht, formatDate } from "../lib/format";
 import { remainingBalance, lineTotal } from "../lib/transfers";
+import SegmentedTabs from "../components/ui/SegmentedTabs";
 
 export default function TransfersHub() {
   const { isOwner } = useAuth();
@@ -41,33 +42,20 @@ export default function TransfersHub() {
   return (
     <Layout>
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <h1 className="font-slab text-lg">{isOwner ? "โอนจ่าย (ไม่ใช่เงินสด)" : "ใบเบิกเงินโอน"}</h1>
-        {isOwner && (
-          <Link to="/transfers/accounts" className="text-sm border border-paperLine rounded px-3 py-1.5">
-            บัญชีธนาคาร & หมวดหมู่
-          </Link>
-        )}
+        <h1 className="text-lg font-semibold">{isOwner ? "โอนจ่าย (ไม่ใช่เงินสด)" : "ใบเบิกเงินโอน"}</h1>
       </div>
 
       {isOwner && (
-        <div className="flex gap-2 mb-4">
-          <button
-            onClick={() => setTab("withdrawals")}
-            className={`text-sm rounded-full px-4 py-1.5 border ${
-              tab === "withdrawals" ? "bg-blue-600 text-white border-blue-600" : "border-paperLine text-inkSoft"
-            }`}
-          >
-            ใบเบิกเงินโอน
-          </button>
-          <button
-            onClick={() => setTab("payments")}
-            className={`text-sm rounded-full px-4 py-1.5 border ${
-              tab === "payments" ? "bg-blue-600 text-white border-blue-600" : "border-paperLine text-inkSoft"
-            }`}
-          >
-            ใบโอนจ่าย
-          </button>
-        </div>
+        <SegmentedTabs
+          value={tab}
+          onChange={setTab}
+          ariaLabel="ประเภทเอกสารโอน"
+          className="mb-4"
+          options={[
+            { value: "withdrawals", label: "ใบเบิกเงินโอน" },
+            { value: "payments", label: "ใบโอนจ่าย" },
+          ]}
+        />
       )}
 
       {(!isOwner || tab === "withdrawals") ? (

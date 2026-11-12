@@ -3,9 +3,8 @@ import {
   ClipboardCheck,
   ClipboardList,
   FileText,
-  History,
   Receipt,
-  Users,
+  Settings,
   Wallet,
 } from "lucide-react";
 
@@ -19,10 +18,9 @@ export function getNavItems({ isOwner, isGuest, isStaff, pendingTxCount = 0, pen
       show: isOwner || isStaff,
     },
     { to: "/owner", icon: ClipboardCheck, label: "ตรวจสอบทั้งหมด", badge: pendingTxCount, show: isOwner },
-    { to: "/admin/users", icon: Users, label: "ผู้ใช้งาน", badge: pendingUserCount, show: isOwner },
     { to: "/admin/funds", icon: Wallet, label: "งบค่าใช้จ่าย", show: isOwner },
     { to: "/reports", icon: BarChart3, label: "รายงาน", show: isOwner || isGuest },
     { to: "/daily-closings", icon: ClipboardList, label: "ปิดยอด", show: isOwner || isStaff },
-    { to: "/activity", icon: History, label: "ประวัติใช้งาน", show: isOwner },
+    { to: "/settings", icon: Settings, label: "ตั้งค่า", badge: pendingUserCount, show: isOwner },
   ].filter((item) => item.show);
 }

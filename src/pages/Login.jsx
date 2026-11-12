@@ -12,6 +12,8 @@ import {
 } from "../lib/auth";
 import PinPad from "../components/PinPad";
 import { useAuth } from "../context/AuthContext";
+import Input from "../components/ui/Input";
+import Button from "../components/ui/Button";
 
 export default function Login() {
   const { user, profile } = useAuth();
@@ -71,7 +73,7 @@ export default function Login() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-paper px-4">
         <div className="w-full max-w-sm bg-white border border-paperLine rounded-lg p-6 text-center">
-          <h1 className="font-slab text-xl mb-2">บัญชีถูกปิดใช้งาน</h1>
+          <h1 className="text-xl font-semibold mb-2">บัญชีถูกปิดใช้งาน</h1>
           <p className="text-sm text-inkSoft mb-5">กรุณาติดต่อเจ้าของร้านเพื่อขอเปิดใช้งานอีกครั้ง</p>
           <button onClick={handleDisabledLogout} className="text-sm border border-paperLine rounded px-3 py-2">
             ออกจากระบบ
@@ -84,7 +86,7 @@ export default function Login() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-paper px-4">
       <div className="w-full max-w-sm bg-white border border-paperLine rounded-lg p-6 text-center">
-        <h1 className="font-slab text-xl mb-1">เข้าสู่ระบบ</h1>
+        <h1 className="text-xl font-semibold mb-1">เข้าสู่ระบบ</h1>
         <p className="text-sm text-inkSoft mb-5">บันทึกรายรับ-รายจ่ายหน้าร้าน</p>
 
         {loginMode === null ? (
@@ -96,7 +98,7 @@ export default function Login() {
                 <label htmlFor="login-username" className="text-sm text-inkSoft block text-left mb-1">
                   ชื่อผู้ใช้
                 </label>
-                <input
+                <Input
                   id="login-username"
                   autoComplete="username"
                   value={username}
@@ -114,7 +116,7 @@ export default function Login() {
 
         {error && <p className="text-sm text-rust mt-3">{error}</p>}
 
-        <button
+        <Button
           onClick={handleSubmit}
           disabled={
             busy ||
@@ -125,7 +127,7 @@ export default function Login() {
           className="w-full bg-teal text-white rounded py-2.5 font-medium hover:bg-teal-dark disabled:opacity-40 mt-4"
         >
           {busy ? "กำลังเข้าสู่ระบบ..." : "เข้าสู่ระบบ"}
-        </button>
+        </Button>
 
         <p className="text-sm text-inkSoft mt-4">
           พนักงานใหม่?{" "}

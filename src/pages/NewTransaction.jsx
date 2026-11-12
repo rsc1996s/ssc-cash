@@ -10,7 +10,7 @@ import Input from "../components/ui/Input";
 import Textarea from "../components/ui/Textarea";
 import FormHeader from "../components/ui/FormHeader";
 import { useFeedback } from "../components/ui/FeedbackProvider";
-import Sheet from "../components/ui/Sheet";
+import SearchPicker from "../components/ui/SearchPicker";
 
 const MAX_RECEIPT_PHOTOS = 3;
 const TOTAL_PHOTO_KB_WARNING = 700;
@@ -39,8 +39,6 @@ export default function NewTransaction() {
   const [compressing, setCompressing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
-  const [categorySearch, setCategorySearch] = useState("");
 
   useEffect(() => {
     const unsub = onSnapshot(query(collection(db, "funds"), orderBy("createdAt", "asc")), (snap) => {
@@ -261,45 +259,39 @@ export default function NewTransaction() {
             <label htmlFor="transaction-category" className="mb-2 block text-sm font-semibold">
               หมวดหมู่ (ถ้ามี)
             </label>
-            <Input
+            <SearchPicker
               id="transaction-category"
-              list="cash-category-options"
               value={form.category}
-              onChange={(e) => update("category", e.target.value)}
+              onChange={(value) => update("category", value)}
+              options={categories.map((category) => ({ value: category.label, label: category.label }))}
               placeholder="เลือกหรือพิมพ์หมวดหมู่"
+              ariaLabel="หมวดหมู่"
+              clearable
+              createAction={(query, { close }) => (
+                <button
+                  type="button"
+                  onClick={() => {
+                    update("category", query);
+                    close();
+                  }}
+                  className="min-h-12 w-full rounded-lg border border-blue-200 bg-blue-50 px-3 text-left text-sm font-medium text-blue-800"
+                >
+                  ใช้ “{query}”
+                </button>
+              )}
             />
-            {categories.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setCategoryPickerOpen(true)}
-                className="mt-2 min-h-11 w-full rounded-lg border border-paperLine bg-white text-sm text-blue-700"
-              >
-                เลือกหมวดหมู่
-              </button>
-            )}
-            <datalist id="cash-category-options">
-              {categories.map((category) => <option key={category.id} value={category.label} />)}
-            </datalist>
           </div>
 
           <div>
             <label className="mb-2 block text-sm font-semibold">ฝั่งเงินหมุนเวียน</label>
-            <div className="grid grid-cols-2 gap-2">
-              {funds.map((fund, index) => (
-                <button
-                  type="button"
-                  id={index === 0 ? "transaction-fund-choice" : undefined}
-                  key={fund.id}
-                  aria-pressed={form.fundId === fund.id}
-                  onClick={() => update("fundId", fund.id)}
-                  className={`rounded-lg border px-3 py-2.5 text-sm font-medium ${
-                    form.fundId === fund.id ? "border-blue-600 bg-blue-50 text-blue-700" : "border-paperLine text-inkSoft"
-                  }`}
-                >
-                  {fund.label}
-                </button>
-              ))}
-            </div>
+            <SearchPicker
+              id="transaction-fund-choice"
+              value={form.fundId}
+              onChange={(value) => update("fundId", value)}
+              options={funds.map((fund) => ({ value: fund.id, label: fund.label }))}
+              placeholder="เลือกงบค่าใช้จ่าย"
+              ariaLabel="งบค่าใช้จ่าย"
+            />
           </div>
 
           <div>
@@ -426,53 +418,6 @@ export default function NewTransaction() {
 
         </form>
       </Card>
-      <Sheet
-        open={categoryPickerOpen}
-        title="เลือกหมวดหมู่"
-        onClose={() => {
-          setCategoryPickerOpen(false);
-          setCategorySearch("");
-        }}
-        footer={
-          <div className="flex justify-between gap-2">
-            <button type="button" onClick={() => update("category", "")} className="min-h-11 rounded-lg border border-paperLine px-4 text-sm">
-              ล้างหมวดหมู่
-            </button>
-            <button type="button" onClick={() => setCategoryPickerOpen(false)} className="min-h-11 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white">
-              เสร็จสิ้น
-            </button>
-          </div>
-        }
-      >
-        <Input
-          autoFocus
-          value={categorySearch}
-          onChange={(event) => setCategorySearch(event.target.value)}
-          placeholder="ค้นหาหมวดหมู่"
-          aria-label="ค้นหาหมวดหมู่"
-          className="mb-3"
-        />
-        <div className="grid gap-2 sm:grid-cols-2">
-          {categories
-            .filter((category) => category.label.toLowerCase().includes(categorySearch.trim().toLowerCase()))
-            .map((category) => (
-              <button
-                key={category.id}
-                type="button"
-                onClick={() => {
-                  update("category", category.label);
-                  setCategoryPickerOpen(false);
-                  setCategorySearch("");
-                }}
-                className={`min-h-11 rounded-lg border px-3 text-left text-sm ${
-                  form.category === category.label ? "border-blue-600 bg-blue-50 text-blue-700" : "border-paperLine"
-                }`}
-              >
-                {category.label}
-              </button>
-            ))}
-        </div>
-      </Sheet>
     </Layout>
   );
 }

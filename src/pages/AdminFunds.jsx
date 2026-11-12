@@ -4,7 +4,6 @@ import {
   onSnapshot,
   addDoc,
   updateDoc,
-  deleteDoc,
   doc,
   serverTimestamp,
   orderBy,
@@ -21,121 +20,10 @@ import { newAuditEvent, queueAuditEvent } from "../lib/audit";
 import { useFeedback } from "../components/ui/FeedbackProvider";
 import FormHeader from "../components/ui/FormHeader";
 import Sheet from "../components/ui/Sheet";
-
-function CashCategoryManager() {
-  const { confirm, toast } = useFeedback();
-  const [categories, setCategories] = useState([]);
-  const [label, setLabel] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [formOpen, setFormOpen] = useState(false);
-  const [error, setError] = useState("");
-  const [visibleCount, setVisibleCount] = useState(20);
-
-  useEffect(() => {
-    const unsub = onSnapshot(collection(db, "cashCategories"), (snap) =>
-      setCategories(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
-    );
-    return () => unsub();
-  }, []);
-
-  async function add(e) {
-    e.preventDefault();
-    if (!label.trim()) {
-      setError("กรุณากรอกชื่อหมวดหมู่");
-      return;
-    }
-    setBusy(true);
-    try {
-      await addDoc(collection(db, "cashCategories"), {
-        label: label.trim(),
-        createdAt: serverTimestamp(),
-      });
-      setLabel("");
-      setFormOpen(false);
-      toast("เพิ่มหมวดหมู่แล้ว");
-    } catch (addError) {
-      console.error(addError);
-      setError("เพิ่มหมวดหมู่ไม่สำเร็จ ลองใหม่อีกครั้ง");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function cancelAdd() {
-    if (label.trim() && !await confirm({
-      title: "ยกเลิกการเพิ่มหมวดหมู่",
-      description: "ชื่อหมวดหมู่ที่กรอกไว้จะหายไป",
-      confirmLabel: "ทิ้งข้อมูล",
-      cancelLabel: "ทำต่อ",
-      danger: true,
-    })) return;
-    setLabel("");
-    setError("");
-    setFormOpen(false);
-  }
-
-  async function remove(id) {
-    if (!await confirm({
-      title: "ลบหมวดหมู่",
-      description: "ลบหมวดหมู่นี้?",
-      confirmLabel: "ลบหมวดหมู่",
-      danger: true,
-    })) return;
-    await deleteDoc(doc(db, "cashCategories", id));
-    toast("ลบหมวดหมู่แล้ว");
-  }
-
-  return (
-    <div className="bg-white border border-paperLine rounded-lg p-5 max-w-md mt-6">
-      <h2 className="font-slab text-base mb-1">หมวดหมู่รายการเงินสด</h2>
-      <p className="text-xs text-inkSoft mb-3">
-        ใช้เลือกเร็วตอนบันทึกรายรับ-รายจ่ายเงินสด เช่น ค่าวัตถุดิบ, ค่าน้ำมัน, ค่าขนส่ง
-      </p>
-      <div className="flex flex-wrap gap-2 mb-3">
-        {categories.slice(0, visibleCount).map((c) => (
-          <span
-            key={c.id}
-            className="text-xs bg-paper border border-paperLine rounded-full px-3 py-1 flex items-center gap-2"
-          >
-            {c.label}
-            <button onClick={() => remove(c.id)} className="text-rust">
-              ×
-            </button>
-          </span>
-        ))}
-        {categories.length === 0 && <p className="text-sm text-inkSoft">ยังไม่มีหมวดหมู่</p>}
-      </div>
-      {categories.length > visibleCount && (
-        <button type="button" onClick={() => setVisibleCount((count) => count + 20)} className="mb-3 text-sm text-blue-700">
-          ดูเพิ่มเติม ({categories.length - visibleCount})
-        </button>
-      )}
-      <button type="button" onClick={() => setFormOpen(true)} className="min-h-11 rounded-lg border border-paperLine px-3 text-sm text-blue-700">
-        + เพิ่มหมวดหมู่
-      </button>
-      <Sheet
-        open={formOpen}
-        title="เพิ่มหมวดหมู่"
-        onClose={cancelAdd}
-        header={<FormHeader title="เพิ่มหมวดหมู่" onCancel={cancelAdd} formId="add-cash-category" saving={busy} />}
-      >
-        <form id="add-cash-category" onSubmit={add} className="space-y-3">
-          <input
-            autoFocus
-            value={label}
-            onChange={(event) => {
-              setLabel(event.target.value);
-              setError("");
-            }}
-            placeholder="ชื่อหมวดหมู่ใหม่"
-            className="w-full border border-paperLine rounded px-3 py-2 text-sm focus:border-teal"
-          />
-          {error && <p role="alert" className="text-sm text-rust">{error}</p>}
-        </form>
-      </Sheet>
-    </div>
-  );
-}
+import SegmentedTabs from "../components/ui/SegmentedTabs";
+import PageHeader from "../components/ui/PageHeader";
+import Card from "../components/ui/Card";
+import Input from "../components/ui/Input";
 
 export default function AdminFunds() {
   const { user, profile } = useAuth();
@@ -333,35 +221,24 @@ export default function AdminFunds() {
 
   return (
     <Layout>
-      <h1 className="font-slab text-lg mb-4">งบค่าใช้จ่ายหมุนเวียน</h1>
-
-      <div role="tablist" aria-label="จัดการงบค่าใช้จ่าย" className="mb-4 flex gap-2 overflow-x-auto">
-        {[
-          ["funds", "งบค่าใช้จ่าย"],
-          ["create", "เพิ่มงบ"],
-          ["categories", "หมวดหมู่"],
-        ].map(([value, label]) => (
-          <button
-            type="button"
-            role="tab"
-            aria-selected={section === value}
-            key={value}
-            onClick={() => setSection(value)}
-            className={`min-h-11 shrink-0 rounded-full border px-4 text-sm ${
-              section === value ? "border-blue-600 bg-blue-600 text-white" : "border-paperLine bg-white text-inkSoft"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <PageHeader title="งบค่าใช้จ่ายหมุนเวียน" fallbackTo="/" />
+      <SegmentedTabs
+        value={section}
+        onChange={setSection}
+        ariaLabel="จัดการงบค่าใช้จ่าย"
+        className="mb-4"
+        options={[
+          { value: "funds", label: "งบค่าใช้จ่าย" },
+          { value: "create", label: "เพิ่มงบ" },
+        ]}
+      />
 
       {section === "funds" && <div className="space-y-4 mb-8">
         {funds.map((f) => {
           const balance = currentFundBalance(f, topups, transactions);
           const draft = topupDraft[f.id] || { amount: "", note: "" };
           return (
-            <div key={f.id} className="bg-white border border-paperLine rounded-lg p-5">
+            <Card key={f.id} className="p-4 sm:p-5">
               {editingId === f.id ? (
                 <div className="mb-3">
                   <FormHeader
@@ -374,7 +251,7 @@ export default function AdminFunds() {
                   <div className="grid sm:grid-cols-2 gap-3 mb-3">
                     <div>
                       <label className="text-xs text-inkSoft block mb-1">ชื่อฝั่ง</label>
-                      <input
+                      <Input
                         value={editDraft.label}
                         onChange={(e) => setEditDraft((d) => ({ ...d, label: e.target.value }))}
                         className="w-full border border-paperLine rounded px-3 py-2 text-sm focus:border-teal"
@@ -382,9 +259,10 @@ export default function AdminFunds() {
                     </div>
                     <div>
                       <label className="text-xs text-inkSoft block mb-1">ยอดเงินตั้งต้น (บาท)</label>
-                      <input
+                      <Input
                         id="fund-topup-amount"
                         type="number"
+                        inputMode="decimal"
                         step="0.01"
                         value={editDraft.openingBalance}
                         onChange={(e) => setEditDraft((d) => ({ ...d, openingBalance: e.target.value }))}
@@ -398,7 +276,7 @@ export default function AdminFunds() {
                 <div className="flex justify-between items-start mb-3">
                   <div>
                     <div className="flex items-center gap-2">
-                      <div className="font-slab text-lg">{f.label}</div>
+                      <div className="text-lg font-semibold">{f.label}</div>
                       <button
                         onClick={() => startEdit(f)}
                         className="text-inkSoft hover:text-teal p-1 -m-1"
@@ -440,13 +318,13 @@ export default function AdminFunds() {
                     ))}
                 </ul>
               </details>
-            </div>
+            </Card>
           );
         })}
       </div>}
 
-      {section === "create" && <div className="bg-white border border-paperLine rounded-lg p-5 max-w-md">
-        <h2 className="font-slab text-base mb-3">เพิ่มฝั่งเงินหมุนเวียนใหม่</h2>
+      {section === "create" && <Card className="max-w-md p-4 sm:p-5">
+        <h2 className="mb-3 text-base font-semibold">เพิ่มฝั่งเงินหมุนเวียนใหม่</h2>
         <form id="create-fund-form" onSubmit={createFund} className="space-y-3">
           <FormHeader
             title="เพิ่มงบค่าใช้จ่าย"
@@ -467,31 +345,30 @@ export default function AdminFunds() {
           />
           <div>
             <label className="text-sm text-inkSoft block mb-1">ชื่อฝั่ง</label>
-            <input
+            <Input
                     id="new-fund-label"
                     value={newFund.label}
               onChange={(e) => setNewFund((f) => ({ ...f, label: e.target.value }))}
               placeholder="เช่น หน้าร้าน"
-              className="w-full border border-paperLine rounded px-3 py-2"
             />
           </div>
           <div>
             <label className="text-sm text-inkSoft block mb-1">ยอดเงินตั้งต้น (บาท)</label>
-            <input
+            <Input
               id="new-fund-opening"
               type="number"
+              inputMode="decimal"
               step="0.01"
               value={newFund.openingBalance}
               onChange={(e) => setNewFund((f) => ({ ...f, openingBalance: e.target.value }))}
               placeholder="เช่น 30000"
-              className="w-full border border-paperLine rounded px-3 py-2 font-nums"
+              className="font-nums"
             />
           </div>
           {error && <p className="text-sm text-rust">{error}</p>}
         </form>
-      </div>}
+      </Card>}
 
-      {section === "categories" && <CashCategoryManager />}
       <Sheet
         open={Boolean(topupFundId)}
         title="เติมเงิน"
@@ -513,8 +390,9 @@ export default function AdminFunds() {
           }} className="space-y-3">
             <label className="block text-sm">
               จำนวนเงิน (บาท)
-              <input
+              <Input
                 type="number"
+                inputMode="decimal"
                 step="0.01"
                 value={(topupDraft[topupFundId] || {}).amount || ""}
                 onChange={(event) => setTopupDraft((items) => ({
@@ -526,7 +404,7 @@ export default function AdminFunds() {
             </label>
             <label className="block text-sm">
               หมายเหตุ
-              <input
+              <Input
                 value={(topupDraft[topupFundId] || {}).note || ""}
                 onChange={(event) => setTopupDraft((items) => ({
                   ...items,

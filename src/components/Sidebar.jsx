@@ -56,7 +56,8 @@ export default function Sidebar() {
     navigate("/login");
   }
 
-  const isActive = (path) => location.pathname === path;
+  const isActive = (path) =>
+    location.pathname === path || (path !== "/" && location.pathname.startsWith(`${path}/`));
 
   const navItems = getNavItems({ isOwner, isGuest, isStaff, pendingTxCount, pendingUserCount });
 
@@ -65,7 +66,7 @@ export default function Sidebar() {
       className={`no-print hidden lg:flex flex-col fixed inset-y-0 left-0 ${SIDEBAR_WIDTH} bg-white text-ink border-r border-paperLine z-20`}
     >
       <div className="px-5 py-5 border-b border-paperLine shrink-0">
-        <Link to="/" className="font-slab text-lg leading-snug block">
+        <Link to="/" className="block min-h-11 py-2 text-lg font-semibold leading-snug">
           บันทึกเงินสดหน้าร้าน
         </Link>
       </div>
@@ -74,7 +75,7 @@ export default function Sidebar() {
         <div className="px-4 pt-4 shrink-0">
           <Link
             to="/new"
-            className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-2.5 text-sm font-medium transition-colors"
+            className="flex min-h-11 items-center justify-center gap-2 rounded-lg bg-blue-700 px-3 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
           >
             <PlusCircle size={18} />
             บันทึกใหม่
@@ -87,7 +88,7 @@ export default function Sidebar() {
           <Link
             key={item.label}
             to={item.to}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+            className={`flex min-h-11 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus ${
               isActive(item.to) ? "bg-blue-50 text-blue-700" : "text-inkSoft hover:text-blue-700 hover:bg-blue-50"
             }`}
           >
@@ -112,14 +113,14 @@ export default function Sidebar() {
         </div>
         <Link
           to="/change-pin"
-          className="flex items-center gap-2.5 px-2 py-2.5 rounded-lg text-sm text-inkSoft hover:bg-blue-50"
+          className="flex min-h-11 items-center gap-2.5 rounded-lg px-2 py-2.5 text-sm text-inkSoft hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
         >
           <KeyRound size={16} />
           เปลี่ยน PIN
         </Link>
         <button
           onClick={handleLogout}
-          className="w-full flex items-center gap-2.5 px-2 py-2.5 rounded-lg text-sm text-rust hover:bg-red-50"
+          className="flex min-h-11 w-full items-center gap-2.5 rounded-lg px-2 py-2.5 text-sm text-rust hover:bg-red-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
         >
           <LogOut size={16} />
           ออกจากระบบ

@@ -4,13 +4,16 @@ import { doc, onSnapshot, updateDoc, arrayUnion, serverTimestamp, writeBatch } f
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
 import Layout from "../components/Layout";
-import StatusBadge from "../components/StatusBadge";
+import StatusBadge from "../components/ui/StatusBadge";
 import SignaturePad from "../components/SignaturePad";
 import { formatBaht, formatDateTime, TYPE_LABEL, PAYMENT_LABEL } from "../lib/format";
 import { newAuditEvent, queueAuditEvent } from "../lib/audit";
 import FormHeader from "../components/ui/FormHeader";
 import Sheet from "../components/ui/Sheet";
 import { useFeedback } from "../components/ui/FeedbackProvider";
+import SegmentedTabs from "../components/ui/SegmentedTabs";
+import Input from "../components/ui/Input";
+import Textarea from "../components/ui/Textarea";
 
 const EDITABLE_FIELDS = [
   { key: "amount", label: "จำนวนเงิน", type: "number" },
@@ -224,25 +227,16 @@ export default function TransactionDetail() {
         ← กลับ
       </button>
 
-      <div role="tablist" aria-label="รายละเอียดรายการ" className="mb-4 flex gap-2">
-        {[
-          ["details", "รายละเอียด"],
-          ["history", "ประวัติการแก้ไข"],
-        ].map(([value, label]) => (
-          <button
-            type="button"
-            role="tab"
-            aria-selected={detailTab === value}
-            key={value}
-            onClick={() => setDetailTab(value)}
-            className={`min-h-11 rounded-full border px-4 text-sm ${
-              detailTab === value ? "border-blue-600 bg-blue-600 text-white" : "border-paperLine bg-white text-inkSoft"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <SegmentedTabs
+        value={detailTab}
+        onChange={setDetailTab}
+        ariaLabel="รายละเอียดรายการ"
+        className="mb-4"
+        options={[
+          { value: "details", label: "รายละเอียด" },
+          { value: "history", label: "ประวัติการแก้ไข" },
+        ]}
+      />
 
       {detailTab === "details" && <div className="bg-white border border-paperLine rounded-lg p-6 mb-6">
         <div className="flex justify-between items-start mb-4">
@@ -250,7 +244,7 @@ export default function TransactionDetail() {
             <div className="text-xs text-inkSoft mb-1">
               {tx.fundLabel} · {TYPE_LABEL[tx.type]} · {PAYMENT_LABEL[tx.paymentMethod]} · โดย {tx.createdByName}
             </div>
-            <h1 className="font-slab text-xl">{tx.itemDescription}</h1>
+            <h1 className="text-xl font-semibold">{tx.itemDescription}</h1>
           </div>
           <StatusBadge status={tx.status} />
         </div>
@@ -304,7 +298,7 @@ export default function TransactionDetail() {
             {EDITABLE_FIELDS.map((f) => (
               <div key={f.key}>
                 <label className="text-sm text-inkSoft block mb-1">{f.label}</label>
-                <input
+                <Input
                   type={f.type === "number" ? "number" : "text"}
                   step={f.type === "number" ? "0.01" : undefined}
                   value={draft[f.key]}
@@ -317,7 +311,7 @@ export default function TransactionDetail() {
               <label className="text-sm text-inkSoft block mb-1">
                 เหตุผลในการแก้ไข <span className="text-rust">*จำเป็น</span>
               </label>
-              <textarea
+              <Textarea
                 id="transaction-edit-reason"
                 required
                 value={reason}
@@ -368,7 +362,7 @@ export default function TransactionDetail() {
         {isOwner && tx.status === "pending" && !editing && (
           <div className="mt-5 pt-5 border-t border-paperLine">
             <label className="text-sm text-inkSoft block mb-1">หมายเหตุการตรวจสอบ (ถ้ามี)</label>
-            <textarea
+            <Textarea
               value={reviewNote}
               onChange={(e) => setReviewNote(e.target.value)}
               rows={2}
@@ -430,7 +424,7 @@ export default function TransactionDetail() {
 
       {detailTab === "history" && (
         <div className="bg-white border border-paperLine rounded-lg p-6">
-          <h2 className="font-slab text-base mb-3">ประวัติการแก้ไข (Audit Trail)</h2>
+          <h2 className="text-base font-semibold mb-3">ประวัติการแก้ไข (Audit Trail)</h2>
           {(!tx.editHistory || tx.editHistory.length === 0) && (
             <p className="text-sm text-inkSoft">ยังไม่มีการแก้ไขรายการนี้</p>
           )}

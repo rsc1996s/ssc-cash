@@ -94,7 +94,7 @@ export default function ChangePin() {
       <Layout>
         <div className="max-w-sm mx-auto bg-white border border-paperLine rounded-lg p-6 text-center">
           <div className="mb-4 inline-flex rounded-full bg-green-50 px-3 py-1 text-sm font-semibold text-green-800">สำเร็จ</div>
-          <h1 className="font-slab text-lg mb-2">เปลี่ยน PIN เรียบร้อย</h1>
+          <h1 className="text-lg font-semibold mb-2">เปลี่ยน PIN เรียบร้อย</h1>
           <p className="text-sm text-inkSoft mb-5">ใช้ PIN ใหม่ในการเข้าสู่ระบบครั้งถัดไป</p>
           <button
             onClick={() => navigate("/")}

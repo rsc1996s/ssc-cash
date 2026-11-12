@@ -7,6 +7,7 @@ import { pinToPassword, randomPinEmail, PIN_PATTERN, normalizeUsername, USERNAME
 import PinPad from "../components/PinPad";
 import FormHeader from "../components/ui/FormHeader";
 import { useFeedback } from "../components/ui/FeedbackProvider";
+import Input from "../components/ui/Input";
 
 export default function Register() {
   const [step, setStep] = useState(1); // 1: ชื่อ, 2: ตั้ง PIN, 3: ยืนยัน PIN
@@ -156,7 +157,7 @@ export default function Register() {
           <form onSubmit={goToPinStep} className="space-y-3 text-left">
             <div>
               <label className="text-sm text-inkSoft block mb-1">ชื่อ-นามสกุล</label>
-              <input
+              <Input
                 autoFocus
                 autoComplete="name"
                 required
@@ -169,7 +170,7 @@ export default function Register() {
               <label htmlFor="register-username" className="text-sm text-inkSoft block mb-1">
                 ชื่อผู้ใช้ (ภาษาอังกฤษ/ตัวเลข)
               </label>
-              <input
+              <Input
                 id="register-username"
                 autoComplete="username"
                 pattern="[A-Za-z][A-Za-z0-9._-]{2,23}"

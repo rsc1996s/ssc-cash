@@ -51,7 +51,7 @@ export default function PrintVoucher() {
       <div className="print-sheet max-w-2xl mx-auto bg-white border border-paperLine rounded-lg p-8">
         <div className="flex justify-between items-start border-b border-ink pb-4 mb-6">
           <div>
-            <h1 className="font-slab text-2xl">ใบเบิกเงินสด</h1>
+            <h1 className="text-2xl font-semibold">ใบเบิกเงินสด</h1>
             <p className="text-sm text-inkSoft">{tx.fundLabel}</p>
           </div>
           <div className="text-right text-sm">

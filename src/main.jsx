@@ -22,7 +22,7 @@ function renderStartupError(message) {
   root.render(
     <main className="min-h-screen flex items-center justify-center bg-paper px-4">
       <section className="w-full max-w-lg bg-white border border-paperLine rounded-lg p-6">
-        <h1 className="font-slab text-xl mb-3">ตั้งค่า Firebase ไม่สมบูรณ์</h1>
+        <h1 className="text-xl font-semibold mb-3">ตั้งค่า Firebase ไม่สมบูรณ์</h1>
         <p className="text-sm text-inkSoft mb-4">{message}</p>
         <p className="text-sm font-medium mb-2">ตรวจสอบตัวแปรต่อไปนี้ในไฟล์ .env:</p>
         <ul className="list-disc list-inside text-sm font-nums text-inkSoft space-y-1">

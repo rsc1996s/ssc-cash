@@ -3,7 +3,7 @@ import { Search, SlidersHorizontal, X } from "lucide-react";
 import { STATUS_LABEL } from "../lib/format";
 import Button from "./ui/Button";
 import Input from "./ui/Input";
-import Select from "./ui/Select";
+import SearchPicker from "./ui/SearchPicker";
 import Sheet from "./ui/Sheet";
 
 const DATE_PRESETS = [
@@ -79,13 +79,13 @@ export default function TransactionFilterPanel({
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="text-sm font-medium">
             ช่วงวันที่
-            <Select
+            <SearchPicker
               value={filters.datePreset}
-              onChange={(event) => updateFilter("datePreset", event.target.value)}
-              className="mt-1 text-sm"
-            >
-              {DATE_PRESETS.map((preset) => <option key={preset.value} value={preset.value}>{preset.label}</option>)}
-            </Select>
+              onChange={(value) => updateFilter("datePreset", value)}
+              options={DATE_PRESETS}
+              placeholder="เลือกช่วงวันที่"
+              ariaLabel="ช่วงวันที่"
+            />
           </label>
           {filters.datePreset === "custom" && (
             <>
@@ -101,36 +101,48 @@ export default function TransactionFilterPanel({
           )}
           <label className="text-sm font-medium">
             หมวดหมู่
-            <Select value={filters.category} onChange={(event) => updateFilter("category", event.target.value)} className="mt-1 text-sm">
-              <option value="all">ทุกหมวดหมู่</option>
-              {categories.map((category) => <option key={category} value={category}>{category}</option>)}
-            </Select>
+            <SearchPicker
+              value={filters.category}
+              onChange={(value) => updateFilter("category", value)}
+              options={[{ value: "all", label: "ทุกหมวดหมู่" }, ...categories.map((category) => ({ value: category, label: category }))]}
+              placeholder="ทุกหมวดหมู่"
+              ariaLabel="หมวดหมู่"
+            />
           </label>
           {funds.length > 0 && (
             <label className="text-sm font-medium">
               งบค่าใช้จ่าย
-              <Select value={filters.fund} onChange={(event) => updateFilter("fund", event.target.value)} className="mt-1 text-sm">
-                <option value="all">ทุกงบค่าใช้จ่าย</option>
-                {funds.map((fund) => <option key={fund.id} value={fund.id}>{fund.label}</option>)}
-              </Select>
+              <SearchPicker
+                value={filters.fund}
+                onChange={(value) => updateFilter("fund", value)}
+                options={[{ value: "all", label: "ทุกงบค่าใช้จ่าย" }, ...funds.map((fund) => ({ value: fund.id, label: fund.label }))]}
+                placeholder="ทุกงบค่าใช้จ่าย"
+                ariaLabel="งบค่าใช้จ่าย"
+              />
             </label>
           )}
           {showStatus && (
             <label className="text-sm font-medium">
               สถานะ
-              <Select value={filters.status} onChange={(event) => updateFilter("status", event.target.value)} className="mt-1 text-sm">
-                <option value="all">ทุกสถานะ</option>
-                {statusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-              </Select>
+              <SearchPicker
+                value={filters.status}
+                onChange={(value) => updateFilter("status", value)}
+                options={[{ value: "all", label: "ทุกสถานะ" }, ...statusOptions]}
+                placeholder="ทุกสถานะ"
+                ariaLabel="สถานะ"
+              />
             </label>
           )}
           {showAuthor && (
             <label className="text-sm font-medium">
               ผู้บันทึก
-              <Select value={filters.author} onChange={(event) => updateFilter("author", event.target.value)} className="mt-1 text-sm">
-                <option value="all">ทุกคน</option>
-                {authors.map((author) => <option key={author} value={author}>{author}</option>)}
-              </Select>
+              <SearchPicker
+                value={filters.author}
+                onChange={(value) => updateFilter("author", value)}
+                options={[{ value: "all", label: "ทุกคน" }, ...authors.map((author) => ({ value: author, label: author }))]}
+                placeholder="ทุกคน"
+                ariaLabel="ผู้บันทึก"
+              />
             </label>
           )}
         </div>

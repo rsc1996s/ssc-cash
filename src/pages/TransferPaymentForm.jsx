@@ -16,10 +16,12 @@ import Layout from "../components/Layout";
 import { formatBaht } from "../lib/format";
 import { nextDocNumber } from "../lib/counters";
 import { lineTotal, renumberLines, remainingBalance } from "../lib/transfers";
-import Combobox from "../components/Combobox";
+import SearchPicker from "../components/ui/SearchPicker";
+import AccountSearchPicker from "../components/AccountSearchPicker";
 import { newAuditEvent, queueAuditEvent } from "../lib/audit";
 import { useFeedback } from "../components/ui/FeedbackProvider";
 import FormHeader from "../components/ui/FormHeader";
+import Input from "../components/ui/Input";
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
@@ -252,6 +254,15 @@ export default function TransferPaymentForm() {
 
   const total = lineTotal(lines);
   const overLimit = remainingBeforeThis != null && total > remainingBeforeThis;
+  const withdrawalOptions = availableWithdrawals.map((withdrawal) => {
+    const remain = remainingBalance(withdrawal, allPayments.filter((payment) => payment.id !== id));
+    return {
+      value: withdrawal.id,
+      label: withdrawal.requestNo,
+      sublabel: `${withdrawal.date || ""} · ${formatBaht(withdrawal.totalAmount ?? lineTotal(withdrawal.lines))} บาท · คงเหลือ ${formatBaht(remain)} บาท`,
+      searchText: `${withdrawal.requestNo} ${withdrawal.date || ""} ${withdrawal.totalAmount ?? lineTotal(withdrawal.lines)}`,
+    };
+  });
 
   return (
     <Layout>
@@ -274,8 +285,11 @@ export default function TransferPaymentForm() {
         <div className="grid sm:grid-cols-2 gap-3 mb-3">
           <div>
             <label className="text-sm text-inkSoft block mb-1">โอนจากบัญชี (A)</label>
-            <Combobox
+            <AccountSearchPicker
               id="payment-source-account"
+              side="source"
+              accounts={sourceAccounts}
+              ariaLabel="บัญชีต้นทาง"
               value={sourceAccountId}
               onChange={(v) => {
                 setDirty(true);
@@ -283,28 +297,17 @@ export default function TransferPaymentForm() {
                 setLinkedWithdrawalRequestId("");
               }}
               placeholder="— เลือกบัญชี —"
-              options={sourceAccounts.map((a) => ({
-                value: a.id,
-                label: `${a.bankName} · ${a.accountNumber}`,
-                sublabel: a.accountName,
-              }))}
             />
           </div>
           <div>
             <label className="text-sm text-inkSoft block mb-1">ตัดยอดกับใบเบิกเลขที่</label>
-            <Combobox
+            <SearchPicker
               id="payment-withdrawal-select"
+              ariaLabel="ใบเบิกที่ผูก"
               value={linkedWithdrawalRequestId}
               onChange={selectWithdrawal}
               placeholder="— เลือกใบเบิก —"
-              options={availableWithdrawals.map((w) => {
-                const remain = remainingBalance(w, allPayments.filter((p) => p.id !== id));
-                return {
-                  value: w.id,
-                  label: w.requestNo,
-                  sublabel: `คงเหลือ ${formatBaht(remain)} บาท`,
-                };
-              })}
+              options={withdrawalOptions}
             />
           </div>
         </div>
@@ -326,24 +329,22 @@ export default function TransferPaymentForm() {
                 </button>
               </div>
               <div className="space-y-2">
-                <input
+                <Input
                   type="date"
                   value={l.transferDate}
                   onChange={(e) => updateLine(idx, "transferDate", e.target.value)}
                   className="w-full border border-paperLine rounded px-3 py-2.5 text-sm focus:border-teal"
                 />
-                <Combobox
+                <AccountSearchPicker
                   id={`payment-payee-mobile-${idx}`}
+                  side="payee"
+                  accounts={payeeAccounts}
+                  ariaLabel={`บัญชีผู้รับรายการที่ ${idx + 1}`}
                   value={l.payeeAccountId}
                   onChange={(v) => updateLine(idx, "payeeAccountId", v)}
                   placeholder="— เลือกบัญชีผู้รับ —"
-                  options={payeeAccounts.map((a) => ({
-                    value: a.id,
-                    label: `${a.bankName} · ${a.accountNumber}`,
-                    sublabel: a.accountName,
-                  }))}
                 />
-                <input
+                <Input
                   type="number"
                   step="0.01"
                   inputMode="decimal"
@@ -352,7 +353,7 @@ export default function TransferPaymentForm() {
                   className="w-full border border-paperLine rounded px-3 py-2.5 text-sm text-right font-nums focus:border-teal"
                   placeholder="ยอดเงิน"
                 />
-                <input
+                <Input
                   value={l.note}
                   onChange={(e) => updateLine(idx, "note", e.target.value)}
                   placeholder="หมายเหตุ"
@@ -364,7 +365,7 @@ export default function TransferPaymentForm() {
           {payeeAccounts.length === 0 && (
             <p className="text-xs text-amber">
               ยังไม่มีบัญชีผู้รับโอนบันทึกไว้ —{" "}
-              <Link to="/transfers/accounts" className="underline">
+              <Link to="/settings/bank-accounts" className="underline">
                 เพิ่มบัญชีก่อน
               </Link>
             </p>
@@ -389,7 +390,7 @@ export default function TransferPaymentForm() {
                 <tr key={idx} className="border-b border-paperLine/60">
                   <td className="py-1.5 font-nums text-inkSoft">{idx + 1}</td>
                   <td className="py-1.5 pr-2">
-                    <input
+                    <Input
                       type="date"
                       value={l.transferDate}
                       onChange={(e) => updateLine(idx, "transferDate", e.target.value)}
@@ -397,20 +398,18 @@ export default function TransferPaymentForm() {
                     />
                   </td>
                   <td className="py-1.5 pr-2">
-                    <Combobox
+                    <AccountSearchPicker
                       id={`payment-payee-desktop-${idx}`}
+                      side="payee"
+                      accounts={payeeAccounts}
+                      ariaLabel={`บัญชีผู้รับรายการที่ ${idx + 1}`}
                       value={l.payeeAccountId}
                       onChange={(v) => updateLine(idx, "payeeAccountId", v)}
                       placeholder="— เลือกบัญชีผู้รับ —"
-                      options={payeeAccounts.map((a) => ({
-                        value: a.id,
-                        label: `${a.bankName} · ${a.accountNumber}`,
-                        sublabel: a.accountName,
-                      }))}
                     />
                   </td>
                   <td className="py-1.5 pr-2">
-                    <input
+                    <Input
                       type="number"
                       step="0.01"
                       value={l.amount}
@@ -420,7 +419,7 @@ export default function TransferPaymentForm() {
                     />
                   </td>
                   <td className="py-1.5 pr-2">
-                    <input
+                    <Input
                       value={l.note}
                       onChange={(e) => updateLine(idx, "note", e.target.value)}
                       className="w-full border border-paperLine rounded px-2 py-1.5 text-sm focus:border-teal"
@@ -438,7 +437,7 @@ export default function TransferPaymentForm() {
           {payeeAccounts.length === 0 && (
             <p className="text-xs text-amber mt-1">
               ยังไม่มีบัญชีผู้รับโอนบันทึกไว้ —{" "}
-              <Link to="/transfers/accounts" className="underline">
+              <Link to="/settings/bank-accounts" className="underline">
                 เพิ่มบัญชีก่อน
               </Link>
             </p>

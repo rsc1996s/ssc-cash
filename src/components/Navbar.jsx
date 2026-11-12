@@ -52,7 +52,8 @@ export default function Navbar() {
     navigate("/login");
   }
 
-  const isActive = (path) => location.pathname === path;
+  const isActive = (path) =>
+    location.pathname === path || (path !== "/" && location.pathname.startsWith(`${path}/`));
 
   const navItems = getNavItems({ isOwner, isGuest, isStaff, pendingTxCount, pendingUserCount });
   const currentPage = navItems.find(
@@ -161,7 +162,9 @@ function TabItem({ to, icon: Icon, label, badge, active, onClick }) {
       <span className="relative">
         <Icon size={21} strokeWidth={active ? 2.3 : 2} />
         {!!badge && (
-          <span className="absolute -top-1 -right-1.5 w-2 h-2 rounded-full bg-rust border border-white" />
+          <span className="absolute -right-3 -top-2 inline-flex min-h-4 min-w-4 items-center justify-center rounded-full border border-white bg-rust px-1 text-[9px] leading-none text-white">
+            {badge}
+          </span>
         )}
       </span>
       <span className={`text-xs leading-none ${active ? "font-semibold" : ""}`}>{label}</span>
@@ -183,6 +186,7 @@ function TabItem({ to, icon: Icon, label, badge, active, onClick }) {
 
 function MobileTabBar({ navItems, isGuest, isActive, onOpenMenu }) {
   const home = navItems.find((item) => item.to === "/");
+  const settings = navItems.find((item) => item.to === "/settings");
   const firstContext =
     navItems.find((item) => item.to === "/owner") ||
     navItems.find((item) => item.to === "/transfers") ||
@@ -201,6 +205,7 @@ function MobileTabBar({ navItems, isGuest, isActive, onOpenMenu }) {
         </Link>
       )}
       {secondContext && <TabItem {...secondContext} label="รายงาน" active={isActive(secondContext.to)} />}
+      {settings && <TabItem {...settings} label="ตั้งค่า" active={isActive(settings.to)} />}
       <TabItem icon={Menu} label="เมนู" onClick={onOpenMenu} />
     </nav>
   );

@@ -4,6 +4,8 @@ import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase";
 import { formatBaht, formatDate, formatDateTime } from "../lib/format";
 import { lineTotal } from "../lib/transfers";
+import PrintSheet from "../components/PrintSheet";
+import Button from "../components/ui/Button";
 
 export default function TransferPaymentPrint() {
   const { id } = useParams();
@@ -19,16 +21,10 @@ export default function TransferPaymentPrint() {
   if (!p) return <div className="p-8 text-inkSoft">กำลังโหลด...</div>;
 
   return (
-    <div className="max-w-2xl mx-auto p-8 font-sans text-ink">
-      <div className="no-print flex justify-end mb-4">
-        <button onClick={() => window.print()} className="bg-teal text-white rounded px-4 py-2 text-sm font-medium">
-          พิมพ์เอกสาร / บันทึก PDF
-        </button>
-      </div>
-
+    <PrintSheet actions={<Button onClick={() => window.print()}>พิมพ์เอกสาร / บันทึก PDF</Button>}>
       <div className="border-2 border-ink rounded-lg p-6">
         <div className="text-center mb-6">
-          <h1 className="font-slab text-xl">ใบโอนจ่าย</h1>
+          <h1 className="text-xl font-semibold">ใบโอนจ่าย</h1>
           <p className="text-sm text-inkSoft font-nums">{p.transferNo}</p>
         </div>
 
@@ -94,6 +90,6 @@ export default function TransferPaymentPrint() {
 
         <p className="text-xs text-inkSoft text-center mt-6">พิมพ์เมื่อ {formatDateTime(new Date())}</p>
       </div>
-    </div>
+    </PrintSheet>
   );
 }

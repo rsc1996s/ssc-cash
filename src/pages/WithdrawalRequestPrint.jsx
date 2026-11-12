@@ -1,105 +1,113 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { doc, onSnapshot } from "firebase/firestore";
+import { collection, doc, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase";
-import { formatBaht, formatDate, formatDateTime } from "../lib/format";
-import { lineTotal } from "../lib/transfers";
+import { useAuth } from "../context/AuthContext";
+import { downloadCsv } from "../components/csvExport";
+import PrintSheet from "../components/PrintSheet";
+import WithdrawalRequestDocument from "../components/WithdrawalRequestDocument";
+import { withdrawalReportRows } from "../components/withdrawalReportData";
+import Button from "../components/ui/Button";
 
 export default function WithdrawalRequestPrint() {
   const { id } = useParams();
-  const [w, setW] = useState(null);
+  const { isOwner } = useAuth();
+  const [request, setRequest] = useState(null);
+  const [payments, setPayments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [groupByCategory, setGroupByCategory] = useState(false);
+  const [showNote, setShowNote] = useState(true);
 
   useEffect(() => {
-    const unsub = onSnapshot(doc(db, "withdrawalRequests", id), (snap) => {
-      if (snap.exists()) setW({ id: snap.id, ...snap.data() });
-    });
-    return () => unsub();
+    const unsubscribe = onSnapshot(
+      doc(db, "withdrawalRequests", id),
+      (snapshot) => {
+        if (snapshot.exists()) {
+          setRequest({ id: snapshot.id, ...snapshot.data() });
+          setError("");
+        } else {
+          setError("ไม่พบใบเบิกนี้");
+        }
+        setLoading(false);
+      },
+      (loadError) => {
+        console.error("โหลดใบเบิกสำหรับพิมพ์ไม่สำเร็จ:", loadError);
+        setError("โหลดใบเบิกไม่สำเร็จ กรุณาตรวจสอบสิทธิ์และการเชื่อมต่อ");
+        setLoading(false);
+      }
+    );
+    return () => unsubscribe();
   }, [id]);
 
-  if (!w) return <div className="p-8 text-inkSoft">กำลังโหลด...</div>;
+  useEffect(() => {
+    if (!isOwner) {
+      setPayments([]);
+      return undefined;
+    }
+    const unsubscribe = onSnapshot(
+      collection(db, "transferPayments"),
+      (snapshot) => setPayments(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))),
+      (loadError) => {
+        console.error("โหลดใบโอนจ่ายสำหรับรายงานไม่สำเร็จ:", loadError);
+        setError("โหลดข้อมูลยอดโอนจ่ายไม่สำเร็จ กรุณาลองใหม่");
+      }
+    );
+    return () => unsubscribe();
+  }, [isOwner]);
+
+  if (loading) return <div className="p-8 text-inkSoft">กำลังโหลด...</div>;
+  if (error || !request) return <div role="alert" className="p-8 text-rust">{error || "ไม่พบใบเบิกนี้"}</div>;
+
+  function exportCsv() {
+    const rows = withdrawalReportRows(request.lines || [], groupByCategory).map((entry) => {
+      if (entry.type === "category") return ["", `หมวด: ${entry.category}`, "", ""];
+      if (entry.type === "subtotal") return ["", `ยอดย่อย ${entry.category}`, "", entry.amount];
+      return [
+        entry.line.lineNo || entry.index + 1,
+        entry.line.categoryLabel || "-",
+        entry.line.description || "",
+        Number(entry.line.amount) || 0,
+      ];
+    });
+    downloadCsv(`ใบเบิก-${request.requestNo || id}.csv`, ["ลำดับ", "รายการ (หมวด)", "รายละเอียด", "จำนวนเงิน"], rows);
+  }
+
+  const actions = (
+    <>
+      <Button onClick={() => window.print()}>พิมพ์ / บันทึก PDF</Button>
+      <Button variant="secondary" onClick={exportCsv}>ส่งออก CSV</Button>
+    </>
+  );
 
   return (
-    <div className="max-w-2xl mx-auto p-8 font-sans text-ink">
-      <div className="no-print flex justify-end mb-4">
-        <button onClick={() => window.print()} className="bg-teal text-white rounded px-4 py-2 text-sm font-medium">
-          พิมพ์เอกสาร / บันทึก PDF
-        </button>
+    <PrintSheet actions={actions}>
+      <div className="no-print mb-4 flex flex-wrap gap-2">
+        <Button
+          variant={groupByCategory ? "secondary" : "primary"}
+          aria-pressed={!groupByCategory}
+          onClick={() => setGroupByCategory(false)}
+        >
+          เรียงตามลำดับ
+        </Button>
+        <Button
+          variant={groupByCategory ? "primary" : "secondary"}
+          aria-pressed={groupByCategory}
+          onClick={() => setGroupByCategory(true)}
+        >
+          จัดกลุ่มตามหมวดพร้อมยอดย่อย
+        </Button>
+        <Button variant="secondary" aria-pressed={showNote} onClick={() => setShowNote((value) => !value)}>
+          {showNote ? "ซ่อนหมายเหตุ" : "แสดงหมายเหตุ"}
+        </Button>
       </div>
-
-      <div className="border-2 border-ink rounded-lg p-6">
-        <div className="text-center mb-6">
-          <h1 className="font-slab text-xl">ใบเบิกเงินโอน</h1>
-          <p className="text-sm text-inkSoft font-nums">{w.requestNo}</p>
-        </div>
-
-        <table className="w-full text-sm mb-6">
-          <tbody>
-            <tr>
-              <td className="py-1 text-inkSoft w-44">รับโอนเข้าบัญชี</td>
-              <td className="py-1">{w.sourceAccountLabel}</td>
-            </tr>
-            <tr>
-              <td className="py-1 text-inkSoft">วันที่เบิก</td>
-              <td className="py-1">{formatDate(w.date)}</td>
-            </tr>
-            <tr>
-              <td className="py-1 text-inkSoft">ผู้จัดทำ</td>
-              <td className="py-1">{w.createdByName}</td>
-            </tr>
-            {w.note && (
-              <tr>
-                <td className="py-1 text-inkSoft">หมายเหตุ</td>
-                <td className="py-1">{w.note}</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-
-        <table className="w-full text-sm mb-4 border-t border-b border-paperLine">
-          <thead>
-            <tr className="text-left text-xs text-inkSoft border-b border-paperLine">
-              <th className="py-2 w-10">#</th>
-              <th className="py-2 w-40">หมวดหมู่</th>
-              <th className="py-2">รายละเอียด</th>
-              <th className="py-2 text-right w-28">จำนวนเงิน</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(w.lines || []).map((l, i) => (
-              <tr key={i} className="border-b border-paperLine/60">
-                <td className="py-2 font-nums">{l.lineNo || i + 1}</td>
-                <td className="py-2">{l.categoryLabel || "-"}</td>
-                <td className="py-2">{l.description}</td>
-                <td className="py-2 text-right font-nums">{formatBaht(l.amount)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        <div className="flex justify-end mb-8">
-          <div className="text-right">
-            <div className="text-xs text-inkSoft">ยอดเบิกรวม</div>
-            <div className="font-nums text-lg font-semibold">
-              {formatBaht(w.totalAmount ?? lineTotal(w.lines))} บาท
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-6 mt-10 text-sm">
-          <div className="text-center">
-            <div className="h-14"></div>
-            <div className="border-t border-ink pt-1">ผู้เบิก</div>
-            <div className="text-inkSoft">{w.createdByName}</div>
-          </div>
-          <div className="text-center">
-            <div className="h-14"></div>
-            <div className="border-t border-ink pt-1">ผู้อนุมัติ</div>
-            <div className="text-inkSoft">&nbsp;</div>
-          </div>
-        </div>
-
-        <p className="text-xs text-inkSoft text-center mt-6">พิมพ์เมื่อ {formatDateTime(new Date())}</p>
-      </div>
-    </div>
+      <WithdrawalRequestDocument
+        request={request}
+        isOwner={isOwner}
+        payments={payments}
+        groupByCategory={groupByCategory}
+        showNote={showNote}
+      />
+    </PrintSheet>
   );
 }

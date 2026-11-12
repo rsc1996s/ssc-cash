@@ -4,11 +4,13 @@ import { collection, query, where, orderBy, onSnapshot } from "firebase/firestor
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
 import Layout from "../components/Layout";
-import StatusBadge from "../components/StatusBadge";
+import StatusBadge from "../components/ui/StatusBadge";
 import TypeBadge from "../components/TypeBadge";
-import EmptyState from "../components/EmptyState";
+import EmptyState from "../components/ui/EmptyState";
 import LowFundBalanceBanner from "../components/LowFundBalanceBanner";
 import MetricCard from "../components/MetricCard";
+import SectionTitle from "../components/ui/SectionTitle";
+import Card from "../components/ui/Card";
 import { formatBaht, formatDateTime, PAYMENT_LABEL } from "../lib/format";
 import {
   ArrowUpRight,
@@ -87,9 +89,7 @@ export default function StaffDashboard() {
         <MetricCard label="รายจ่ายรวม" value={formatBaht(totals.expense)} icon={ArrowDownRight} tone="expense" />
       </div>
 
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <h1 className="text-lg font-bold">รายการของฉัน</h1>
-      </div>
+      <SectionTitle title="รายการของฉัน" />
       <TransactionFilterPanel
         filters={filters}
         updateFilter={updateFilter}
@@ -137,7 +137,7 @@ export default function StaffDashboard() {
           action={
             <button
               onClick={clearFilters}
-              className="text-sm border border-paperLine rounded-lg px-4 py-2 hover:border-teal hover:text-teal"
+                className="min-h-11 rounded-lg border border-paperLine px-4 text-sm font-medium text-blue-800 hover:bg-blue-50"
             >
               ล้างตัวกรองทั้งหมด
             </button>
@@ -146,9 +146,9 @@ export default function StaffDashboard() {
       ) : (
         <div className="space-y-3">
           {filtered.slice(0, visibleCount).map((r) => (
-            <div
+            <Card
               key={r.id}
-              className="bg-white border border-paperLine rounded-xl shadow-sm p-4 hover:border-teal transition-colors flex items-center gap-3"
+              className="flex items-center gap-3 p-4"
             >
               <span
                 className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
@@ -199,7 +199,7 @@ export default function StaffDashboard() {
                   พิมพ์
                 </Link>
               )}
-            </div>
+            </Card>
           ))}
           {filtered.length > visibleCount && (
             <button

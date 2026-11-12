@@ -4,9 +4,10 @@ import { db } from "../firebase";
 import Layout from "../components/Layout";
 import Card from "../components/ui/Card";
 import Loading from "../components/ui/Loading";
-import EmptyState from "../components/EmptyState";
+import EmptyState from "../components/ui/EmptyState";
 import { STATUS_LABEL, formatDateTime, formatBaht } from "../lib/format";
 import { History } from "lucide-react";
+import PageHeader from "../components/ui/PageHeader";
 
 const ACTION_LABELS = {
   "transaction-status-changed": "เปลี่ยนสถานะรายการ",
@@ -69,10 +70,8 @@ export default function ActivityHistory() {
 
   return (
     <Layout>
-      <div className="mb-4">
-        <h1 className="text-xl font-bold">ประวัติการใช้งาน</h1>
-        <p className="mt-1 text-sm text-inkSoft">แสดงเหตุการณ์ล่าสุด 100 รายการ · ดูได้เฉพาะเจ้าของร้าน</p>
-      </div>
+      <PageHeader title="ประวัติการใช้งาน" fallbackTo="/settings" />
+      <p className="mb-4 text-sm text-inkSoft">แสดงเหตุการณ์ล่าสุด 100 รายการ · ดูได้เฉพาะเจ้าของร้าน</p>
       {error ? (
         <p role="alert" className="rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-800">{error}</p>
       ) : loading ? (

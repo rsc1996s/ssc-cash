@@ -21,11 +21,14 @@ import {
   normalizeUsername,
   USERNAME_PATTERN,
 } from "../lib/auth";
-import Combobox from "../components/Combobox";
 import { newAuditEvent, queueAuditEvent } from "../lib/audit";
 import Sheet from "../components/ui/Sheet";
 import FormHeader from "../components/ui/FormHeader";
 import { useFeedback } from "../components/ui/FeedbackProvider";
+import PageHeader from "../components/ui/PageHeader";
+import SegmentedTabs from "../components/ui/SegmentedTabs";
+import Input from "../components/ui/Input";
+import SearchPicker from "../components/ui/SearchPicker";
 
 const ROLE_OPTIONS = [
   { value: "staff", label: "พนักงาน" },
@@ -194,7 +197,7 @@ function AddEmployeeForm({ open, onClose }) {
         <form onSubmit={goToPinStep} className="space-y-3 max-w-sm">
           <div>
             <label className="text-sm text-inkSoft block mb-1">ชื่อ-นามสกุล</label>
-            <input
+            <Input
               autoFocus
               required
               value={name}
@@ -206,7 +209,7 @@ function AddEmployeeForm({ open, onClose }) {
             <label htmlFor="employee-username" className="text-sm text-inkSoft block mb-1">
               ชื่อผู้ใช้ (ภาษาอังกฤษ/ตัวเลข)
             </label>
-            <input
+            <Input
               id="employee-username"
               autoComplete="username"
               required
@@ -450,17 +453,19 @@ export default function AdminUsers() {
 
   return (
     <Layout>
-      <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
-        <h1 className="font-slab text-lg">จัดการผู้ใช้งาน</h1>
-        {!showAddForm && setup?.loginMode === "username" && Number.isInteger(setup?.ownerCount) && (
+      <PageHeader
+        title="จัดการผู้ใช้งาน"
+        fallbackTo="/settings"
+        right={!showAddForm && setup?.loginMode === "username" && Number.isInteger(setup?.ownerCount) ? (
           <button
+            type="button"
             onClick={() => setShowAddForm(true)}
-            className="text-sm bg-teal text-white rounded px-3 py-1.5 font-medium"
+            className="min-h-11 rounded-lg bg-teal px-3 text-sm font-medium text-white"
           >
-            + เพิ่มพนักงาน
+            + เพิ่ม
           </button>
-        )}
-      </div>
+        ) : null}
+      />
       <p className="text-sm text-inkSoft mb-4">
         ผู้ใช้เข้าสู่ระบบด้วยชื่อผู้ใช้และ PIN; ระบบไม่เก็บหรือแสดง PIN ในโปรไฟล์
       </p>
@@ -484,7 +489,7 @@ export default function AdminUsers() {
             {users.filter((profile) => !profile.username || profile.pin).map((profile) => (
               <div key={profile.id} className="flex flex-wrap items-center gap-2">
                 <span className="text-sm flex-1 min-w-32">{profile.name || profile.id}</span>
-                <input
+                <Input
                   aria-label={`ชื่อผู้ใช้สำหรับ ${profile.name || profile.id}`}
                   value={usernameDrafts[profile.id] || ""}
                   onChange={(e) => setUsernameDrafts((drafts) => ({ ...drafts, [profile.id]: e.target.value }))}
@@ -522,28 +527,19 @@ export default function AdminUsers() {
         />
       )}
 
-      <div role="tablist" aria-label="รายชื่อผู้ใช้" className="mb-4 flex gap-2">
-        {[
-          ["pending", `รออนุมัติ (${pending.length})`],
-          ["users", `ผู้ใช้งาน (${approved.length})`],
-        ].map(([value, label]) => (
-          <button
-            type="button"
-            role="tab"
-            aria-selected={userSection === value}
-            key={value}
-            onClick={() => {
-              setUserSection(value);
-              setVisibleCount(10);
-            }}
-            className={`min-h-11 rounded-full border px-4 text-sm ${
-              userSection === value ? "border-blue-600 bg-blue-600 text-white" : "border-paperLine bg-white text-inkSoft"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <SegmentedTabs
+        value={userSection}
+        onChange={(value) => {
+          setUserSection(value);
+          setVisibleCount(10);
+        }}
+        ariaLabel="รายชื่อผู้ใช้"
+        className="mb-4"
+        options={[
+          { value: "pending", label: `รออนุมัติ (${pending.length})` },
+          { value: "users", label: `ผู้ใช้งาน (${approved.length})` },
+        ]}
+      />
 
       {userSection === "pending" && pending.length > 0 && (
         <div className="mb-6">
@@ -614,7 +610,8 @@ export default function AdminUsers() {
               <div className="text-xs text-inkSoft">{u.username || "ยังไม่มีชื่อผู้ใช้"}</div>
             </div>
             <div className="flex items-center gap-2">
-              <Combobox
+              <SearchPicker
+                ariaLabel={`บทบาท ${u.name}`}
                 value={u.role}
                 onChange={(role) => setRole(u.id, role)}
                 options={ROLE_OPTIONS}

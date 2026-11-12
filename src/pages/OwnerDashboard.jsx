@@ -3,11 +3,13 @@ import { Link } from "react-router-dom";
 import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase";
 import Layout from "../components/Layout";
-import StatusBadge from "../components/StatusBadge";
+import StatusBadge from "../components/ui/StatusBadge";
 import TypeBadge from "../components/TypeBadge";
 import LowFundBalanceBanner from "../components/LowFundBalanceBanner";
-import EmptyState from "../components/EmptyState";
+import EmptyState from "../components/ui/EmptyState";
 import Loading from "../components/ui/Loading";
+import SectionTitle from "../components/ui/SectionTitle";
+import Card from "../components/ui/Card";
 import { formatBaht, formatDateTime } from "../lib/format";
 import { ClipboardCheck } from "lucide-react";
 import DashboardInsights from "../components/DashboardInsights";
@@ -67,7 +69,7 @@ export default function OwnerDashboard() {
         transactions={rows}
         pendingCount={pendingCount}
       />
-      <h1 className="mb-3 text-lg font-bold">ตรวจสอบรายการทั้งหมด</h1>
+      <SectionTitle title="ตรวจสอบรายการทั้งหมด" />
       <TransactionFilterPanel
         filters={filters}
         updateFilter={updateFilter}
@@ -90,9 +92,9 @@ export default function OwnerDashboard() {
       ) : (
         <div className="space-y-3">
           {filtered.slice(0, visibleCount).map((r) => (
-            <div
+            <Card
               key={r.id}
-              className="bg-white border border-paperLine rounded-xl p-4 shadow-sm hover:border-blue-300 flex items-center gap-3"
+              className="flex items-center gap-3 p-4"
             >
               <Link to={`/transaction/${r.id}`} className="flex-1 min-w-0">
                 <div className="flex justify-between items-start">
@@ -142,7 +144,7 @@ export default function OwnerDashboard() {
                   พิมพ์
                 </Link>
               )}
-            </div>
+            </Card>
           ))}
           {filtered.length > visibleCount && (
             <button

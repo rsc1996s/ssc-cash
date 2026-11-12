@@ -3,11 +3,13 @@ import { Link } from "react-router-dom";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase";
 import Layout from "../components/Layout";
-import StatusBadge from "../components/StatusBadge";
+import StatusBadge from "../components/ui/StatusBadge";
 import TypeBadge from "../components/TypeBadge";
 import { formatBaht, formatDateTime } from "../lib/format";
-import EmptyState from "../components/EmptyState";
+import EmptyState from "../components/ui/EmptyState";
 import Loading from "../components/ui/Loading";
+import SectionTitle from "../components/ui/SectionTitle";
+import Card from "../components/ui/Card";
 import { Receipt, SearchX } from "lucide-react";
 import DashboardInsights from "../components/DashboardInsights";
 import TransactionFilterPanel from "../components/TransactionFilterPanel";
@@ -64,12 +66,10 @@ export default function GuestDashboard() {
     <Layout>
       <DashboardInsights funds={funds} topups={topups} transactions={rows} />
 
-      <div className="mb-4 flex items-center justify-between gap-2">
-        <h1 className="font-slab text-lg">รายการที่อนุมัติแล้ว</h1>
-        <Link to="/reports" className="rounded-lg border border-paperLine px-3 py-2 text-sm text-blue-700">
-          ดูรายงาน
-        </Link>
-      </div>
+      <SectionTitle
+        title="รายการที่อนุมัติแล้ว"
+        action={<Link to="/reports" className="inline-flex min-h-11 items-center rounded-lg border border-paperLine px-3 text-sm font-medium text-blue-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus">ดูรายงาน</Link>}
+      />
 
       <TransactionFilterPanel
         filters={filters}
@@ -96,9 +96,9 @@ export default function GuestDashboard() {
       ) : (
         <div className="space-y-3">
           {filteredRows.slice(0, visibleCount).map((r) => (
-            <div
+            <Card
               key={r.id}
-              className="bg-white border border-paperLine rounded-xl p-4 shadow-sm hover:border-blue-300 flex items-center gap-3"
+              className="flex items-center gap-3 p-4"
             >
               <Link to={`/transaction/${r.id}`} className="flex-1 min-w-0">
                 <div className="flex justify-between items-start">
@@ -134,7 +134,7 @@ export default function GuestDashboard() {
               >
                 พิมพ์
               </Link>
-            </div>
+            </Card>
           ))}
           {filteredRows.length > visibleCount && (
             <button

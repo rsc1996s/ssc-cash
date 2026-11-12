@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 import FeedbackProvider from "./components/ui/FeedbackProvider";
@@ -23,6 +23,8 @@ import ChangePin from "./pages/ChangePin";
 import DailyClosings from "./pages/DailyClosings";
 import ActivityHistory from "./pages/ActivityHistory";
 import PageTransition from "./components/PageTransition";
+import Settings from "./pages/Settings";
+import SettingsCategories from "./pages/SettingsCategories";
 
 export default function App() {
   return (
@@ -34,6 +36,58 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/pending" element={<PendingApproval />} />
+          <Route
+            path="/admin/users"
+            element={<Navigate to="/settings/users" replace state={{ pageHeaderFallback: "/settings" }} />}
+          />
+          <Route
+            path="/transfers/accounts"
+            element={<Navigate to="/settings/bank-accounts" replace state={{ pageHeaderFallback: "/settings" }} />}
+          />
+          <Route
+            path="/activity"
+            element={<Navigate to="/settings/activity" replace state={{ pageHeaderFallback: "/settings" }} />}
+          />
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute requireRole="owner">
+                <Settings />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings/users"
+            element={
+              <ProtectedRoute requireRole="owner">
+                <AdminUsers />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings/categories"
+            element={
+              <ProtectedRoute requireRole="owner">
+                <SettingsCategories />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings/bank-accounts"
+            element={
+              <ProtectedRoute requireRole="owner">
+                <BankAccounts />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings/activity"
+            element={
+              <ProtectedRoute requireRole="owner">
+                <ActivityHistory />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/"
             element={
@@ -67,14 +121,6 @@ export default function App() {
             }
           />
           <Route
-            path="/admin/users"
-            element={
-              <ProtectedRoute requireRole="owner">
-                <AdminUsers />
-              </ProtectedRoute>
-            }
-          />
-          <Route
             path="/admin/funds"
             element={
               <ProtectedRoute requireRole="owner">
@@ -99,14 +145,6 @@ export default function App() {
             }
           />
           <Route
-            path="/activity"
-            element={
-              <ProtectedRoute requireRole="owner">
-                <ActivityHistory />
-              </ProtectedRoute>
-            }
-          />
-          <Route
             path="/transaction/:id/print"
             element={
               <ProtectedRoute>
@@ -119,14 +157,6 @@ export default function App() {
             element={
               <ProtectedRoute requireRole={["owner", "staff"]}>
                 <TransfersHub />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/transfers/accounts"
-            element={
-              <ProtectedRoute requireRole="owner">
-                <BankAccounts />
               </ProtectedRoute>
             }
           />

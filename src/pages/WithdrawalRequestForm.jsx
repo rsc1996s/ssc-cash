@@ -9,17 +9,26 @@ import {
   getDoc,
   serverTimestamp,
   writeBatch,
+  query,
+  where,
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
 import Layout from "../components/Layout";
-import { formatBaht } from "../lib/format";
+import { formatBaht, formatDateTime } from "../lib/format";
 import { nextDocNumber } from "../lib/counters";
-import { lineTotal, renumberLines } from "../lib/transfers";
-import Combobox from "../components/Combobox";
+import { lineTotal, renumberLines, transferredAgainst } from "../lib/transfers";
+import AccountSearchPicker from "../components/AccountSearchPicker";
 import { newAuditEvent, queueAuditEvent } from "../lib/audit";
 import { useFeedback } from "../components/ui/FeedbackProvider";
 import FormHeader from "../components/ui/FormHeader";
+import Input from "../components/ui/Input";
+import Textarea from "../components/ui/Textarea";
+import { normalizeSearchText } from "../components/ui/searchText";
+import SearchPicker from "../components/ui/SearchPicker";
+import Sheet from "../components/ui/Sheet";
+import WithdrawalRequestDocument from "../components/WithdrawalRequestDocument";
+import Button from "../components/ui/Button";
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
@@ -27,6 +36,12 @@ function todayStr() {
 
 function emptyLine(n) {
   return { lineNo: n, categoryLabel: "", description: "", amount: "" };
+}
+
+function timestampValue(value) {
+  if (!value) return null;
+  const timestamp = value.toMillis?.() ?? new Date(value).getTime();
+  return Number.isFinite(timestamp) ? timestamp : null;
 }
 
 export default function WithdrawalRequestForm() {
@@ -41,6 +56,9 @@ export default function WithdrawalRequestForm() {
   const [requestNo, setRequestNo] = useState(null);
   const [createdBy, setCreatedBy] = useState(null);
   const [createdByName, setCreatedByName] = useState("");
+  const [createdAt, setCreatedAt] = useState(null);
+  const [updatedAt, setUpdatedAt] = useState(null);
+  const [originalTotal, setOriginalTotal] = useState(0);
   const [sourceAccountId, setSourceAccountId] = useState("");
   const [date, setDate] = useState(todayStr());
   const [note, setNote] = useState("");
@@ -49,8 +67,21 @@ export default function WithdrawalRequestForm() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [dirty, setDirty] = useState(false);
+  const [previousRequests, setPreviousRequests] = useState([]);
+  const [copySourceId, setCopySourceId] = useState("");
+  const [transferPayments, setTransferPayments] = useState([]);
+  const [paymentsLoaded, setPaymentsLoaded] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [groupByCategory, setGroupByCategory] = useState(false);
+  const [showNote, setShowNote] = useState(true);
+  const [editingLineIndex, setEditingLineIndex] = useState(null);
+  const [lineEditDraft, setLineEditDraft] = useState(null);
 
   const canEdit = isNew || isOwner || createdBy === user.uid;
+  const categoryOptions = categories.map((category) => ({
+    value: category.label,
+    label: category.label,
+  }));
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "bankAccounts"), (snap) => {
@@ -66,6 +97,44 @@ export default function WithdrawalRequestForm() {
   }, []);
 
   useEffect(() => {
+    if (!isNew) return undefined;
+    const requestsQuery = isOwner
+      ? collection(db, "withdrawalRequests")
+      : query(collection(db, "withdrawalRequests"), where("createdBy", "==", user.uid));
+    const unsubscribe = onSnapshot(
+      requestsQuery,
+      (snapshot) => setPreviousRequests(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))),
+      (loadError) => {
+        console.error("โหลดใบเบิกก่อนหน้าไม่สำเร็จ:", loadError);
+        setError("โหลดใบเบิกก่อนหน้าไม่สำเร็จ กรุณาตรวจสอบสิทธิ์และการเชื่อมต่อ");
+      }
+    );
+    return () => unsubscribe();
+  }, [isNew, isOwner, user.uid]);
+
+  useEffect(() => {
+    if (!isOwner) {
+      setPaymentsLoaded(true);
+      setTransferPayments([]);
+      return undefined;
+    }
+    setPaymentsLoaded(false);
+    const unsubscribe = onSnapshot(
+      collection(db, "transferPayments"),
+      (snapshot) => {
+        setTransferPayments(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+        setPaymentsLoaded(true);
+      },
+      (loadError) => {
+        console.error("โหลดใบโอนจ่ายสำหรับตรวจสอบยอดไม่สำเร็จ:", loadError);
+        setError("โหลดข้อมูลยอดโอนจ่ายไม่สำเร็จ กรุณาลองใหม่ก่อนบันทึก");
+        setPaymentsLoaded(false);
+      }
+    );
+    return () => unsubscribe();
+  }, [isOwner]);
+
+  useEffect(() => {
     if (isNew) return;
     const unsub = onSnapshot(doc(db, "withdrawalRequests", id), (snap) => {
       if (!snap.exists()) return;
@@ -73,6 +142,9 @@ export default function WithdrawalRequestForm() {
       setRequestNo(d.requestNo);
       setCreatedBy(d.createdBy || null);
       setCreatedByName(d.createdByName || "");
+      setCreatedAt(d.createdAt || null);
+      setUpdatedAt(d.updatedAt || null);
+      setOriginalTotal(d.totalAmount ?? lineTotal(d.lines));
       setSourceAccountId(d.sourceAccountId);
       setDate(d.date);
       setNote(d.note || "");
@@ -97,6 +169,103 @@ export default function WithdrawalRequestForm() {
     setLines((ls) => renumberLines(ls.filter((_, i) => i !== idx)));
   }
 
+  function startLineEdit(index) {
+    setEditingLineIndex(index);
+    setLineEditDraft({ ...lines[index] });
+  }
+
+  async function cancelLineEdit() {
+    const original = editingLineIndex === null ? null : lines[editingLineIndex];
+    const changed = original && lineEditDraft && Object.keys(original).some((key) =>
+      String(original[key] ?? "") !== String(lineEditDraft[key] ?? "")
+    );
+    if (changed && !await confirm({
+      title: "ยกเลิกการแก้ไขรายการ",
+      description: "ข้อมูลที่แก้ไขแต่ยังไม่ได้บันทึกจะหายไป",
+      confirmLabel: "ทิ้งข้อมูล",
+      cancelLabel: "ทำต่อ",
+      danger: true,
+    })) return;
+    setEditingLineIndex(null);
+    setLineEditDraft(null);
+  }
+
+  function saveLineEdit(event) {
+    event.preventDefault();
+    if (editingLineIndex === null || !lineEditDraft) return;
+    setLines((current) => current.map((line, index) =>
+      index === editingLineIndex ? { ...lineEditDraft, lineNo: line.lineNo } : line
+    ));
+    setDirty(true);
+    setEditingLineIndex(null);
+    setLineEditDraft(null);
+  }
+
+  async function selectOrAddCategory(value, index, closePicker, onSelect = (next) => updateLine(index, "categoryLabel", next)) {
+    const label = value.trim();
+    if (!label) return;
+    const existing = categories.find((category) =>
+      normalizeSearchText(category.label).replace(/\s+/g, "") ===
+      normalizeSearchText(label).replace(/\s+/g, "")
+    );
+    if (existing) {
+      onSelect(existing.label);
+      closePicker();
+      return;
+    }
+    if (!isOwner) {
+      onSelect(label);
+      closePicker();
+      return;
+    }
+    try {
+      await addDoc(collection(db, "transferCategories"), {
+        label,
+        createdAt: serverTimestamp(),
+      });
+      onSelect(label);
+      toast("เพิ่มหมวดหมู่เข้าคลังแล้ว");
+      closePicker();
+    } catch (addError) {
+      console.error("เพิ่มหมวดหมู่ไม่สำเร็จ:", addError);
+      setError("เพิ่มหมวดหมู่เข้าคลังไม่สำเร็จ กรุณาลองใหม่");
+    }
+  }
+
+  function categoryPicker(
+    index,
+    value = lines[index].categoryLabel,
+    onValueChange = (next) => updateLine(index, "categoryLabel", next),
+    onSelect = onValueChange
+  ) {
+    return (
+      <SearchPicker
+        value={value}
+        onChange={onValueChange}
+        options={categoryOptions}
+        ariaLabel={`หมวดหมู่รายการที่ ${index + 1}`}
+        placeholder="เลือกหมวดหมู่"
+        helperText={isOwner ? "พิมพ์ชื่อใหม่เพื่อเพิ่มเข้าคลัง" : undefined}
+        isExactMatch={(query, options) => {
+          const normalized = normalizeSearchText(query).replace(/\s/g, "");
+          return options.some((option) =>
+            normalizeSearchText(option.label).replace(/\s/g, "") === normalized
+          );
+        }}
+        disabled={!canEdit}
+        createAction={(query, { close }) => (
+          <button
+            type="button"
+            onClick={() => selectOrAddCategory(query, index, close, onSelect)}
+            className="min-h-12 w-full rounded-lg border border-blue-200 bg-blue-50 px-3 text-left text-sm font-medium text-blue-800"
+          >
+            {isOwner ? `+ เพิ่ม “${query}”` : `+ ใช้ “${query}” (รอเจ้าของเพิ่มเข้าคลัง)`}
+          </button>
+        )}
+      />
+    );
+  }
+
   async function handleSave() {
     setError("");
     const account = sourceAccounts.find((a) => a.id === sourceAccountId);
@@ -118,9 +287,29 @@ export default function WithdrawalRequestForm() {
       document.getElementById(
         window.matchMedia("(min-width: 768px)").matches
           ? "withdrawal-line-description-desktop"
-          : "withdrawal-line-description-mobile"
+          : "withdrawal-line-edit-0"
       )?.focus();
       return;
+    }
+    const newTotal = lineTotal(cleanLines);
+    if (!isNew && isOwner) {
+      if (!paymentsLoaded) {
+        setError("กำลังโหลดข้อมูลยอดโอนจ่าย กรุณารอสักครู่แล้วลองบันทึกอีกครั้ง");
+        return;
+      }
+      const linked = transferPayments.filter((payment) => payment.linkedWithdrawalRequestId === id);
+      if (linked.length > 0) {
+        const paid = transferredAgainst(id, transferPayments);
+        const remaining = newTotal - paid;
+        const lowerThanPaid = newTotal < paid;
+        const confirmed = await confirm({
+          title: "ยืนยันแก้ไขใบเบิกที่มีการโอนจ่าย",
+          description: `ยอดโอนจ่ายแล้ว ${formatBaht(paid)} บาท\nยอดรวมเดิม ${formatBaht(originalTotal)} บาท → ใหม่ ${formatBaht(newTotal)} บาท\nคงเหลือใหม่ ${formatBaht(remaining)} บาท${lowerThanPaid ? "\n\nคำเตือน: ยอดรวมใหม่ต่ำกว่ายอดที่โอนจ่ายแล้ว ยอดคงเหลือจะติดลบ แต่ยังสามารถบันทึกได้" : ""}`,
+          confirmLabel: "ยืนยันการแก้ไข",
+          danger: lowerThanPaid,
+        });
+        if (!confirmed) return;
+      }
     }
 
     setBusy(true);
@@ -135,7 +324,7 @@ export default function WithdrawalRequestForm() {
           date,
           note: note.trim(),
           lines: cleanLines,
-          totalAmount: lineTotal(cleanLines),
+          totalAmount: newTotal,
           createdAt: serverTimestamp(),
           createdBy: user.uid,
           createdByName: profile?.name || user.email,
@@ -148,7 +337,7 @@ export default function WithdrawalRequestForm() {
           date,
           note: note.trim(),
           lines: cleanLines,
-          totalAmount: lineTotal(cleanLines),
+          totalAmount: newTotal,
           updatedAt: serverTimestamp(),
         });
       }
@@ -220,22 +409,62 @@ export default function WithdrawalRequestForm() {
   }
 
   const total = lineTotal(lines);
+  const sourceAccount = sourceAccounts.find((account) => account.id === sourceAccountId);
+  const previewRequest = {
+    id: id || "preview",
+    requestNo: requestNo || "ตัวอย่าง",
+    sourceAccountLabel: sourceAccount
+      ? `${sourceAccount.bankName} · ${sourceAccount.accountNumber} (${sourceAccount.accountName})`
+      : "",
+    date,
+    note,
+    lines: lines.map((line, index) => ({ ...line, lineNo: index + 1 })),
+    totalAmount: total,
+    createdAt,
+    updatedAt,
+    createdByName: createdByName || profile?.name || "",
+  };
+  const isModified = timestampValue(updatedAt) !== null &&
+    timestampValue(createdAt) !== null &&
+    Math.abs(timestampValue(updatedAt) - timestampValue(createdAt)) > 1000;
+  const previousRequestOptions = [...previousRequests]
+    .sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0))
+    .map((request) => ({
+      value: request.id,
+      label: request.requestNo || request.id,
+      sublabel: `${request.date || ""} · ${formatBaht(request.totalAmount ?? lineTotal(request.lines))} บาท`,
+      searchText: `${request.requestNo || ""} ${request.date || ""} ${request.totalAmount ?? lineTotal(request.lines)}`,
+    }));
+
+  function copyPreviousRequest(requestId) {
+    const request = previousRequests.find((item) => item.id === requestId);
+    if (!request) return;
+    setLines(renumberLines((request.lines || []).map((line, index) => ({
+      lineNo: index + 1,
+      categoryLabel: line.categoryLabel || "",
+      description: line.description || "",
+      amount: "",
+    }))));
+    setCopySourceId(requestId);
+    setDirty(true);
+  }
 
   return (
     <Layout>
-      <div className="bg-white border border-paperLine rounded-lg p-6">
+      <div className="mx-auto max-w-4xl rounded-xl border border-paperLine bg-white p-4 shadow-sm sm:p-6">
         {canEdit ? (
           <FormHeader
             title={isNew ? "สร้างใบเบิกเงินโอนใหม่" : `แก้ไขใบเบิก ${requestNo}`}
             onCancel={cancelForm}
             onSave={handleSave}
             saving={busy}
+            saveDisabled={!isNew && isOwner && !paymentsLoaded}
             saveLabel="บันทึก"
           />
         ) : (
           <div className="mb-4 flex min-h-11 items-center gap-3">
             <button onClick={cancelForm} className="text-sm text-inkSoft">← กลับ</button>
-            <h1 className="font-slab text-xl">ดูใบเบิก {requestNo}</h1>
+            <h1 className="text-xl font-semibold">ดูใบเบิก {requestNo}</h1>
           </div>
         )}
         {!isNew && (
@@ -252,11 +481,50 @@ export default function WithdrawalRequestForm() {
           </p>
         )}
 
-        <div className="grid sm:grid-cols-2 gap-3 mb-5">
+        {!isNew && (
+          <div className="mb-4 rounded-lg bg-paper px-3 py-2 text-sm text-inkSoft">
+            สร้างเมื่อ {createdAt ? formatDateTime(createdAt) : "-"} โดย {createdByName || "-"}
+            {" · "}
+            {isModified ? `แก้ไขล่าสุด ${formatDateTime(updatedAt)}` : "แก้ไขล่าสุด: ไม่มี"}
+            {isModified && <span className="ml-2 font-semibold text-amber">มีการแก้ไข</span>}
+          </div>
+        )}
+
+        <div className="mb-4 flex flex-wrap items-end gap-3">
+          {isNew && (
+            <label className="min-w-0 flex-1 text-sm font-medium">
+              คัดลอกจากใบเบิกก่อนหน้า
+              <SearchPicker
+                value={copySourceId}
+                onChange={copyPreviousRequest}
+                options={previousRequestOptions}
+                placeholder="เลือกใบเบิกเพื่อคัดลอกรายการ"
+                ariaLabel="ใบเบิกก่อนหน้า"
+              />
+            </label>
+          )}
+          {!isNew && (
+            <Button
+              variant="secondary"
+              onClick={() => window.open(`/transfers/withdrawals/${id}/print`, "_blank", "noopener,noreferrer")}
+              className="text-sm"
+            >
+              พิมพ์ / PDF
+            </Button>
+          )}
+          <Button variant="secondary" onClick={() => setPreviewOpen(true)} className="text-sm">
+            ดูตัวอย่างรายงาน
+          </Button>
+        </div>
+
+        <div className="mb-4 grid gap-3 sm:grid-cols-2">
           <div>
-            <label className="text-sm text-inkSoft block mb-1">รับโอนเข้าบัญชี (A)</label>
-            <Combobox
+            <label className="mb-1 block text-sm font-medium">บัญชีต้นทาง</label>
+            <AccountSearchPicker
               id="withdrawal-source-account"
+              side="source"
+              accounts={sourceAccounts}
+              ariaLabel="บัญชีต้นทาง"
               value={sourceAccountId}
               onChange={(value) => {
                 setDirty(true);
@@ -264,21 +532,16 @@ export default function WithdrawalRequestForm() {
               }}
               disabled={!canEdit}
               placeholder="— เลือกบัญชี —"
-              options={sourceAccounts.map((a) => ({
-                value: a.id,
-                label: `${a.bankName} · ${a.accountNumber}`,
-                sublabel: a.accountName,
-              }))}
             />
             {sourceAccounts.length === 0 && (
               <p className="text-xs text-amber mt-1">
-                ยังไม่มีบัญชีบันทึกไว้ — แจ้งเจ้าของร้านให้เพิ่มบัญชีในเมนู "บัญชีธนาคาร & หมวดหมู่" ก่อน
+                ยังไม่มีบัญชีต้นทางในคลัง — กรุณาติดต่อเจ้าของร้านให้เพิ่มบัญชีก่อน
               </p>
             )}
           </div>
           <div>
-            <label className="text-sm text-inkSoft block mb-1">วันที่เบิก</label>
-            <input
+            <label className="mb-1 block text-sm font-medium">วันที่</label>
+            <Input
               type="date"
               value={date}
               onChange={(e) => {
@@ -291,60 +554,67 @@ export default function WithdrawalRequestForm() {
           </div>
         </div>
 
-        {/* มือถือ: การ์ดแนวตั้งต่อ 1 บรรทัด (แทนตารางที่ต้องเลื่อนแนวนอน) */}
-        <div className="md:hidden space-y-3 mb-3">
+        <div className="mb-5">
+          <label className="mb-1 block text-sm font-medium">หมายเหตุ</label>
+          <Textarea
+            value={note}
+            onChange={(event) => {
+              setDirty(true);
+              setNote(event.target.value);
+            }}
+            rows={2}
+            disabled={!canEdit}
+            placeholder="หมายเหตุ (ถ้ามี)"
+          />
+        </div>
+
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-base font-semibold">รายการค่าใช้จ่าย</h2>
+          {canEdit && (
+            <Button variant="secondary" onClick={addLine} className="px-3">
+              + เพิ่มรายการ
+            </Button>
+          )}
+        </div>
+
+        <div className="mb-3 space-y-3 lg:hidden">
           {lines.map((l, idx) => (
-            <div key={idx} className="border border-paperLine rounded-lg p-3 bg-paper/40">
+            <div key={idx} className="rounded-lg border border-paperLine bg-paper/40 p-3">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-nums text-inkSoft">รายการที่ {idx + 1}</span>
+                <span className="text-sm font-semibold">ลำดับ {idx + 1}</span>
                 {canEdit && (
-                  <button onClick={() => removeLine(idx)} className="text-rust text-xs px-2 py-1 -mr-2">
-                    ลบ
-                  </button>
+                  <div className="flex gap-2">
+                    <Button
+                      id={idx === 0 ? "withdrawal-line-edit-0" : undefined}
+                      type="button"
+                      variant="secondary"
+                      onClick={() => startLineEdit(idx)}
+                      className="px-3"
+                    >
+                      แก้ไข
+                    </Button>
+                    <Button type="button" variant="danger" onClick={() => removeLine(idx)} className="px-3">
+                      ลบ
+                    </Button>
+                  </div>
                 )}
               </div>
-              <div className="space-y-2">
-                <input
-                  list="category-options"
-                  value={l.categoryLabel}
-                  onChange={(e) => updateLine(idx, "categoryLabel", e.target.value)}
-                  placeholder="หมวดหมู่ (เลือก/พิมพ์)"
-                  disabled={!canEdit}
-                  className="w-full border border-paperLine rounded px-3 py-2.5 text-sm focus:border-teal disabled:bg-paper disabled:text-inkSoft"
-                />
-                <input
-                  id={idx === 0 ? "withdrawal-line-description-mobile" : undefined}
-                  value={l.description}
-                  onChange={(e) => updateLine(idx, "description", e.target.value)}
-                  placeholder="รายละเอียด"
-                  disabled={!canEdit}
-                  className="w-full border border-paperLine rounded px-3 py-2.5 text-sm focus:border-teal disabled:bg-paper disabled:text-inkSoft"
-                />
-                <input
-                  type="number"
-                  step="0.01"
-                  inputMode="decimal"
-                  value={l.amount}
-                  onChange={(e) => updateLine(idx, "amount", e.target.value)}
-                  disabled={!canEdit}
-                  placeholder="ยอดเงิน"
-                  className="w-full border border-paperLine rounded px-3 py-2.5 text-sm text-right font-nums focus:border-teal disabled:bg-paper disabled:text-inkSoft"
-                />
-              </div>
+              <p className="break-words text-sm font-medium">{l.categoryLabel || "ไม่ระบุหมวด"}</p>
+              <p className="mt-1 break-words text-sm text-inkSoft">{l.description || "—"}</p>
+              <p className="mt-2 text-right font-nums text-base font-semibold">{formatBaht(l.amount)} บาท</p>
             </div>
           ))}
         </div>
 
-        {/* จอกลาง/ใหญ่: ตารางปกติ */}
-        <div className="hidden md:block mb-2 overflow-x-auto">
-          <table className="w-full text-sm min-w-[640px]">
+        <div className="mb-3 hidden lg:block">
+          <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-xs text-inkSoft border-b border-paperLine">
-                <th className="py-2 w-10">ลำดับ</th>
-                <th className="py-2 w-40">หมวดหมู่</th>
+              <tr className="border-b border-paperLine text-left text-xs text-inkSoft">
+                <th className="w-16 py-2">ลำดับ</th>
+                <th className="w-56 py-2">รายการ (หมวด)</th>
                 <th className="py-2">รายละเอียด</th>
-                <th className="py-2 w-32 text-right">ยอดเงิน</th>
-                <th className="py-2 w-10"></th>
+                <th className="w-36 py-2 text-right">จำนวนเงิน</th>
+                {canEdit && <th className="w-28 py-2 text-right">จัดการ</th>}
               </tr>
             </thead>
             <tbody>
@@ -352,17 +622,10 @@ export default function WithdrawalRequestForm() {
                 <tr key={idx} className="border-b border-paperLine/60">
                   <td className="py-1.5 font-nums text-inkSoft">{idx + 1}</td>
                   <td className="py-1.5 pr-2">
-                    <input
-                      list="category-options"
-                      value={l.categoryLabel}
-                      onChange={(e) => updateLine(idx, "categoryLabel", e.target.value)}
-                      placeholder="เลือก/พิมพ์หมวดหมู่"
-                      disabled={!canEdit}
-                      className="w-full border border-paperLine rounded px-2 py-1.5 text-sm focus:border-teal disabled:bg-paper disabled:text-inkSoft"
-                    />
+                    {categoryPicker(idx)}
                   </td>
                   <td className="py-1.5 pr-2">
-                    <input
+                    <Input
                       id={idx === 0 ? "withdrawal-line-description-desktop" : undefined}
                       value={l.description}
                       onChange={(e) => updateLine(idx, "description", e.target.value)}
@@ -372,9 +635,10 @@ export default function WithdrawalRequestForm() {
                     />
                   </td>
                   <td className="py-1.5 pr-2">
-                    <input
+                    <Input
                       type="number"
                       step="0.01"
+                      inputMode="decimal"
                       value={l.amount}
                       onChange={(e) => updateLine(idx, "amount", e.target.value)}
                       disabled={!canEdit}
@@ -382,48 +646,23 @@ export default function WithdrawalRequestForm() {
                       placeholder="0.00"
                     />
                   </td>
-                  <td className="py-1.5 text-center">
+                  {canEdit && <td className="py-1.5 text-right">
                     {canEdit && (
-                      <button onClick={() => removeLine(idx)} className="text-rust text-xs">
-                        ลบ
-                      </button>
+                      <div className="flex justify-end gap-1">
+                        <Button type="button" variant="secondary" onClick={() => removeLine(idx)} className="px-2">ลบ</Button>
+                      </div>
                     )}
-                  </td>
+                  </td>}
                 </tr>
               ))}
             </tbody>
           </table>
-          <datalist id="category-options">
-            {categories.map((c) => (
-              <option key={c.id} value={c.label} />
-            ))}
-          </datalist>
         </div>
 
-        {canEdit && (
-          <button onClick={addLine} className="text-sm border border-paperLine rounded px-3 py-1.5 mb-4">
-            + เพิ่มบรรทัด
-          </button>
-        )}
-
-        <div>
-          <label className="text-sm text-inkSoft block mb-1">หมายเหตุ</label>
-          <textarea
-            value={note}
-            onChange={(e) => {
-              setDirty(true);
-              setNote(e.target.value);
-            }}
-            rows={2}
-            disabled={!canEdit}
-            className="w-full border border-paperLine rounded px-3 py-2 mb-4 focus:border-teal disabled:bg-paper disabled:text-inkSoft"
-          />
-        </div>
-
-        <div className="flex justify-end mb-4">
-          <div className="text-right">
-            <div className="text-xs text-inkSoft">ยอดเบิกรวม</div>
-            <div className="font-nums text-xl">{formatBaht(total)} บาท</div>
+        <div className="mb-4 flex justify-end">
+          <div className="rounded-lg bg-blue-50 px-4 py-3 text-right">
+            <div className="text-sm font-semibold">ยอดรวมรอชำระ</div>
+            <div className="font-nums text-xl font-bold">{formatBaht(total)} บาท</div>
           </div>
         </div>
 
@@ -439,6 +678,79 @@ export default function WithdrawalRequestForm() {
           </div>
         )}
       </div>
+      <Sheet
+        open={editingLineIndex !== null}
+        title="แก้ไขรายการ"
+        onClose={cancelLineEdit}
+        header={
+          <FormHeader
+            title={`แก้ไขรายการที่ ${(editingLineIndex ?? 0) + 1}`}
+            onCancel={cancelLineEdit}
+            formId="withdrawal-line-form"
+            saveLabel="บันทึกรายการ"
+          />
+        }
+      >
+        {lineEditDraft && editingLineIndex !== null && (
+          <form id="withdrawal-line-form" onSubmit={saveLineEdit} className="space-y-3">
+            <label className="block text-sm font-medium">
+              รายการ (หมวด)
+              {categoryPicker(
+                editingLineIndex,
+                lineEditDraft.categoryLabel,
+                (value) => setLineEditDraft((draft) => ({ ...draft, categoryLabel: value })),
+                (value) => setLineEditDraft((draft) => ({ ...draft, categoryLabel: value }))
+              )}
+            </label>
+            <label className="block text-sm font-medium">
+              รายละเอียด
+              <Input
+                id="withdrawal-line-description-mobile"
+                value={lineEditDraft.description}
+                onChange={(event) => setLineEditDraft((draft) => ({ ...draft, description: event.target.value }))}
+                placeholder="รายละเอียด"
+                className="mt-1"
+              />
+            </label>
+            <label className="block text-sm font-medium">
+              จำนวนเงิน
+              <Input
+                type="number"
+                inputMode="decimal"
+                step="0.01"
+                value={lineEditDraft.amount}
+                onChange={(event) => setLineEditDraft((draft) => ({ ...draft, amount: event.target.value }))}
+                placeholder="0.00"
+                className="mt-1 text-right font-nums"
+              />
+            </label>
+          </form>
+        )}
+      </Sheet>
+      <Sheet
+        open={previewOpen}
+        title="ตัวอย่างรายงานใบเบิก"
+        onClose={() => setPreviewOpen(false)}
+      >
+        <div className="mb-3 flex flex-wrap gap-2">
+          <Button variant={groupByCategory ? "primary" : "secondary"} onClick={() => setGroupByCategory(false)}>
+            เรียงตามลำดับ
+          </Button>
+          <Button variant={groupByCategory ? "secondary" : "primary"} onClick={() => setGroupByCategory(true)}>
+            จัดกลุ่มตามหมวดพร้อมยอดย่อย
+          </Button>
+          <Button variant="secondary" aria-pressed={showNote} onClick={() => setShowNote((value) => !value)}>
+            {showNote ? "ซ่อนหมายเหตุ" : "แสดงหมายเหตุ"}
+          </Button>
+        </div>
+        <WithdrawalRequestDocument
+          request={previewRequest}
+          isOwner={isOwner}
+          payments={transferPayments}
+          groupByCategory={groupByCategory}
+          showNote={showNote}
+        />
+      </Sheet>
     </Layout>
   );
 }

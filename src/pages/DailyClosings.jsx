@@ -8,11 +8,12 @@ import Button from "../components/ui/Button";
 import Input from "../components/ui/Input";
 import Textarea from "../components/ui/Textarea";
 import Loading from "../components/ui/Loading";
-import EmptyState from "../components/EmptyState";
+import EmptyState from "../components/ui/EmptyState";
 import { formatBaht, formatDateTime } from "../lib/format";
 import { ClipboardCheck } from "lucide-react";
 import FormHeader from "../components/ui/FormHeader";
 import { useFeedback } from "../components/ui/FeedbackProvider";
+import SearchPicker from "../components/ui/SearchPicker";
 
 function bangkokDateNow() {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -216,14 +217,13 @@ export default function DailyClosings() {
 
           <label className="block text-sm font-medium">
             งบค่าใช้จ่าย
-            <select
+            <SearchPicker
               value={fundId}
-              onChange={(event) => setFundId(event.target.value)}
+              onChange={setFundId}
+              options={funds.map((fund) => ({ value: fund.id, label: fund.label }))}
+              ariaLabel="งบค่าใช้จ่าย"
               disabled={loadingFunds || Boolean(correction)}
-              className="mt-1 min-h-11 w-full rounded-lg border border-paperLine bg-white px-3 py-2.5 text-base"
-            >
-              {funds.map((fund) => <option key={fund.id} value={fund.id}>{fund.label}</option>)}
-            </select>
+            />
           </label>
 
           <div className="grid gap-3 sm:grid-cols-2">
