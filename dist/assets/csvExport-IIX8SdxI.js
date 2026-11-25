@@ -1,0 +1,2 @@
+function s(t){if(typeof t=="number"&&Number.isFinite(t))return String(t);const e=String(t??"");return`"${(/^[\s]*[=+\-@]/.test(e)?`'${e}`:e).replace(/"/g,'""')}"`}function i(t,e){return`\uFEFF${[t,...e].map(n=>n.map(s).join(",")).join(`\r
+`)}`}function a(t,e,n){const r=new Blob([i(e,n)],{type:"text/csv;charset=utf-8"}),o=URL.createObjectURL(r),c=document.createElement("a");c.href=o,c.download=t,c.click(),URL.revokeObjectURL(o)}export{a as d};

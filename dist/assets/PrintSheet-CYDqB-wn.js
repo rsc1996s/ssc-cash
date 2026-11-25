@@ -1,0 +1,1 @@
+import{j as e}from"./index-DlJ02Vdf.js";function m({children:s,actions:t,className:n=""}){return e.jsxs("main",{className:`print-document mx-auto min-h-screen max-w-[210mm] bg-white p-4 text-ink sm:p-8 ${n}`,children:[t&&e.jsx("div",{className:"no-print mb-4 flex flex-wrap justify-end gap-2",children:t}),e.jsx("article",{className:"print-sheet",children:s})]})}export{m as P};
