@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test tests/searchText.test.js tests/withdrawalReportData.test.js tests/contrast.test.js tests/evidence.test.js tests/fundAccess.test.js tests/netlify-functions.test.js tests/transfers.test.js tests/businessDate.test.js",
+    "test": "node --test tests/searchText.test.js tests/withdrawalReportData.test.js tests/contrast.test.js tests/evidence.test.js tests/fundAccess.test.js tests/netlify-functions.test.js tests/transfers.test.js tests/businessDate.test.js tests/dashboardCash.test.js",
     "test:all": "npm run test && npm run test:rules",
     "test:netlify": "node --test tests/netlify-functions.test.js",
     "test:rules": "firebase emulators:exec --project demo-cash-ledger --only firestore \"node --test tests/firestore.rules.test.js\""
