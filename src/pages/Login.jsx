@@ -14,6 +14,7 @@ import PinPad from "../components/PinPad";
 import { useAuth } from "../context/AuthContext";
 import Input from "../components/ui/Input";
 import Button from "../components/ui/Button";
+import { ORGANIZATION } from "../config/org";
 
 export default function Login() {
   const { user, profile } = useAuth();
@@ -71,8 +72,9 @@ export default function Login() {
 
   if (user && profile?.disabled === true) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-paper px-4">
-        <div className="w-full max-w-sm bg-white border border-paperLine rounded-lg p-6 text-center">
+      <div className="aurora-auth min-h-screen flex items-center justify-center px-4">
+        <div className="aurora-auth-card w-full max-w-sm border border-white rounded-card p-6 text-center">
+          <p className="mb-2 text-sm font-medium text-primary-dark">{ORGANIZATION.name}</p>
           <h1 className="text-xl font-semibold mb-2">บัญชีถูกปิดใช้งาน</h1>
           <p className="text-sm text-inkSoft mb-5">กรุณาติดต่อเจ้าของร้านเพื่อขอเปิดใช้งานอีกครั้ง</p>
           <button onClick={handleDisabledLogout} className="text-sm border border-paperLine rounded px-3 py-2">
@@ -114,7 +116,7 @@ export default function Login() {
           </>
         )}
 
-        {error && <p className="text-sm text-rust mt-3">{error}</p>}
+        {error && <p className="text-sm text-danger mt-3">{error}</p>}
 
         <Button
           onClick={handleSubmit}
@@ -124,14 +126,14 @@ export default function Login() {
             (loginMode === "username" ? pin.length !== 6 : pin.length < 4) ||
             (loginMode === "username" && !username.trim())
           }
-          className="w-full bg-teal text-white rounded py-2.5 font-medium hover:bg-teal-dark disabled:opacity-40 mt-4"
+          className="w-full bg-primary text-white rounded py-2.5 font-medium hover:bg-primary-dark disabled:opacity-40 mt-4"
         >
           {busy ? "กำลังเข้าสู่ระบบ..." : "เข้าสู่ระบบ"}
         </Button>
 
         <p className="text-sm text-inkSoft mt-4">
           พนักงานใหม่?{" "}
-          <Link to="/register" className="text-teal font-medium">
+          <Link to="/register" className="text-primary font-medium">
             ลงทะเบียนที่นี่
           </Link>
         </p>

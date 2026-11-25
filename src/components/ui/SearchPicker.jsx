@@ -44,7 +44,7 @@ export default function SearchPicker({
       setActiveIndex(0);
       return;
     }
-    if (window.matchMedia("(min-width: 640px)").matches) {
+    if (window.matchMedia("(pointer: fine)").matches) {
       requestAnimationFrame(() => inputRef.current?.focus());
     }
   }, [open]);

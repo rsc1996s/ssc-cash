@@ -12,7 +12,7 @@ import {
 } from "recharts";
 import { formatBaht } from "../lib/format";
 
-const AXIS_STYLE = { fontSize: 11, fill: "#4A5A68" };
+const AXIS_STYLE = { fontSize: 12, fill: "rgb(var(--ink-soft))" };
 
 function shortDate(d) {
   return d.toLocaleDateString("th-TH", { day: "numeric", month: "short" });
@@ -61,14 +61,14 @@ export default function OverviewCharts({ statement, fromDate, categoryTotals }) 
         <h3 className="mb-3 text-sm font-semibold">แนวโน้มยอดคงเหลือ</h3>
         <ResponsiveContainer width="100%" height={220}>
           <LineChart data={trendData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-            <CartesianGrid stroke="#D8D6CC" vertical={false} />
+            <CartesianGrid stroke="rgb(var(--line))" vertical={false} />
             <XAxis dataKey="label" tick={AXIS_STYLE} interval="preserveStartEnd" />
             <YAxis tick={AXIS_STYLE} width={70} tickFormatter={(v) => shortBaht(v)} />
             <Tooltip
               formatter={(v) => [`${formatBaht(v)} บาท`, "คงเหลือ"]}
-              contentStyle={{ fontSize: 12, borderRadius: 6, borderColor: "#D8D6CC" }}
+              contentStyle={{ fontSize: 12, borderRadius: 6, borderColor: "rgb(var(--line))" }}
             />
-            <Line type="monotone" dataKey="balance" stroke="#1F6F5C" strokeWidth={2} dot={false} />
+            <Line type="monotone" dataKey="balance" stroke="rgb(var(--primary))" strokeWidth={2} dot={false} />
           </LineChart>
         </ResponsiveContainer>
       </div>
@@ -82,14 +82,14 @@ export default function OverviewCharts({ statement, fromDate, categoryTotals }) 
               layout="vertical"
               margin={{ top: 5, right: 20, left: 10, bottom: 0 }}
             >
-              <CartesianGrid stroke="#D8D6CC" horizontal={false} />
+              <CartesianGrid stroke="rgb(var(--line))" horizontal={false} />
               <XAxis type="number" tick={AXIS_STYLE} tickFormatter={(v) => shortBaht(v)} />
               <YAxis type="category" dataKey="category" tick={AXIS_STYLE} width={110} />
               <Tooltip
                 formatter={(v) => [`${formatBaht(v)} บาท`, "รวม"]}
-                contentStyle={{ fontSize: 12, borderRadius: 6, borderColor: "#D8D6CC" }}
+                contentStyle={{ fontSize: 12, borderRadius: 6, borderColor: "rgb(var(--line))" }}
               />
-              <Bar dataKey="total" fill="#2563EB" radius={[0, 3, 3, 0]} />
+              <Bar dataKey="total" fill="rgb(var(--primary))" radius={[0, 6, 6, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>

@@ -254,7 +254,7 @@ export default function AdminFunds() {
                       <Input
                         value={editDraft.label}
                         onChange={(e) => setEditDraft((d) => ({ ...d, label: e.target.value }))}
-                        className="w-full border border-paperLine rounded px-3 py-2 text-sm focus:border-teal"
+                        className="w-full border border-paperLine rounded px-3 py-2 text-sm focus:border-primary"
                       />
                     </div>
                     <div>
@@ -266,11 +266,11 @@ export default function AdminFunds() {
                         step="0.01"
                         value={editDraft.openingBalance}
                         onChange={(e) => setEditDraft((d) => ({ ...d, openingBalance: e.target.value }))}
-                        className="w-full border border-paperLine rounded px-3 py-2 text-sm font-nums focus:border-teal"
+                        className="w-full border border-paperLine rounded px-3 py-2 text-sm font-nums focus:border-primary"
                       />
                     </div>
                   </div>
-                  {error && <p className="text-sm text-rust mb-2">{error}</p>}
+                  {error && <p className="text-sm text-danger mb-2">{error}</p>}
                 </div>
               ) : (
                 <div className="flex justify-between items-start mb-3">
@@ -279,7 +279,7 @@ export default function AdminFunds() {
                       <div className="text-lg font-semibold">{f.label}</div>
                       <button
                         onClick={() => startEdit(f)}
-                        className="text-inkSoft hover:text-teal p-1 -m-1"
+                        className="text-inkSoft hover:text-primary p-1 -m-1"
                         title="แก้ไขฝั่งนี้"
                       >
                         <Pencil size={14} />
@@ -291,7 +291,7 @@ export default function AdminFunds() {
                   </div>
                   <div className="text-right">
                     <div className="text-xs text-inkSoft">ยอดคงเหลือปัจจุบัน</div>
-                    <div className="font-nums text-2xl text-teal">{formatBaht(balance)}</div>
+                    <div className="font-nums text-2xl text-primary">{formatBaht(balance)}</div>
                   </div>
                 </div>
               )}
@@ -365,7 +365,7 @@ export default function AdminFunds() {
               className="font-nums"
             />
           </div>
-          {error && <p className="text-sm text-rust">{error}</p>}
+          {error && <p className="text-sm text-danger">{error}</p>}
         </form>
       </Card>}
 
@@ -413,7 +413,7 @@ export default function AdminFunds() {
                 className="mt-1 w-full border border-paperLine rounded px-3 py-2"
               />
             </label>
-            {error && <p role="alert" className="text-sm text-rust">{error}</p>}
+            {error && <p role="alert" className="text-sm text-danger">{error}</p>}
           </form>
         )}
       </Sheet>

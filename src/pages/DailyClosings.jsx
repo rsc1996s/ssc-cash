@@ -198,7 +198,7 @@ export default function DailyClosings() {
             saveDisabled={loadingFunds || funds.length === 0}
           />
           {correction && (
-            <div className="rounded-lg border border-amber/30 bg-amber-light p-3 text-sm text-amber">
+            <div className="rounded-lg border border-warning/30 bg-warning-light p-3 text-sm text-warning">
               กำลังแก้ไขยอดวันที่ {correction.businessDate} · ครั้งที่ {correction.revision + 1}
               <button
                 type="button"
@@ -265,7 +265,7 @@ export default function DailyClosings() {
           </label>
 
           {variance && (
-            <div role="alert" className="rounded-lg border border-amber/40 bg-amber-light p-3 text-sm text-amber">
+            <div role="alert" className="rounded-lg border border-warning/40 bg-warning-light p-3 text-sm text-warning">
               ยอดระบบ {formatBaht(variance.expectedBalance)} บาท · ส่วนต่าง{" "}
               {variance.difference > 0 ? "+" : ""}{formatBaht(variance.difference)} บาท
               กรุณาระบุเหตุผลแล้วบันทึกอีกครั้ง

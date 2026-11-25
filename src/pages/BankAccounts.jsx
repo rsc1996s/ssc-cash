@@ -36,7 +36,7 @@ function AccountList({ title, hint, side, accounts }) {
     <Card className="p-4 sm:p-5">
       <h2 className="mb-1 text-base font-semibold">{title}</h2>
       <p className="mb-3 text-sm text-inkSoft">{hint}</p>
-      {error && <p role="alert" className="mb-3 text-sm text-rust">{error}</p>}
+      {error && <p role="alert" className="mb-3 text-sm text-danger">{error}</p>}
 
       <div className="mb-4 space-y-2">
         {list.length === 0 && <p className="text-sm text-inkSoft">ยังไม่มีบัญชีที่บันทึกไว้</p>}

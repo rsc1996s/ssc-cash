@@ -11,12 +11,21 @@ import Textarea from "../components/ui/Textarea";
 import FormHeader from "../components/ui/FormHeader";
 import { useFeedback } from "../components/ui/FeedbackProvider";
 import SearchPicker from "../components/ui/SearchPicker";
+import { formatDate } from "../lib/format";
 
 const MAX_RECEIPT_PHOTOS = 3;
 const TOTAL_PHOTO_KB_WARNING = 700;
 
+function localDateString(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 const emptyForm = {
   fundId: "",
+  transactionDate: localDateString(),
   type: "expense",
   amount: "",
   withdrawnAmount: "",
@@ -39,6 +48,12 @@ export default function NewTransaction() {
   const [compressing, setCompressing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [systemTime, setSystemTime] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setSystemTime(new Date()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     const unsub = onSnapshot(query(collection(db, "funds"), orderBy("createdAt", "asc")), (snap) => {
@@ -127,6 +142,11 @@ export default function NewTransaction() {
       document.getElementById("transaction-fund-choice")?.focus();
       return;
     }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(form.transactionDate)) {
+      setError("กรุณาเลือกวันที่ทำรายการ");
+      document.getElementById("transaction-date")?.focus();
+      return;
+    }
     if (!form.amount || Number(form.amount) <= 0) {
       setError("กรุณาระบุจำนวนเงินให้ถูกต้อง");
       document.getElementById("transaction-amount")?.focus();
@@ -150,6 +170,7 @@ export default function NewTransaction() {
       await addDoc(collection(db, "transactions"), {
         fundId: form.fundId,
         fundLabel,
+        transactionDate: form.transactionDate,
         type: form.type,
         amount: Number(form.amount),
         withdrawnAmount: form.withdrawnAmount ? Number(form.withdrawnAmount) : null,
@@ -187,7 +208,7 @@ export default function NewTransaction() {
     <Layout>
       <Card className="mx-auto max-w-lg p-4 sm:p-6">
         {funds.length === 0 && (
-          <p className="mb-4 rounded-lg bg-amber-light px-3 py-2 text-sm text-amber">
+          <p className="mb-4 rounded-lg bg-warning-light px-3 py-2 text-sm text-warning">
             ยังไม่มีงบค่าใช้จ่าย ให้เจ้าของร้านสร้างงบค่าใช้จ่ายก่อน
           </p>
         )}
@@ -224,6 +245,28 @@ export default function NewTransaction() {
               ))}
             </div>
           </fieldset>
+
+          <div className="grid gap-2 rounded-xl border border-paperLine bg-blue-50/60 p-3 sm:grid-cols-2 sm:items-end">
+            <div>
+              <label htmlFor="transaction-date" className="mb-1 block text-sm font-semibold">
+                วันที่ทำรายการ
+              </label>
+              <Input
+                id="transaction-date"
+                type="date"
+                required
+                value={form.transactionDate}
+                onChange={(event) => update("transactionDate", event.target.value)}
+              />
+              <p className="mt-1 text-xs text-inkSoft">
+                วันที่เลือก: {form.transactionDate ? formatDate(new Date(`${form.transactionDate}T00:00:00`)) : "ยังไม่ได้เลือก"}
+              </p>
+            </div>
+            <p className="text-sm text-inkSoft sm:pb-2">
+              เวลาบันทึก (ระบบ): <time className="font-nums font-semibold text-ink">{systemTime.toLocaleTimeString("th-TH")}</time>
+              <span className="mt-1 block text-xs">บันทึกเวลาจริงอัตโนมัติเมื่อกดบันทึก</span>
+            </p>
+          </div>
 
           <div>
             <label htmlFor="transaction-amount" className="mb-2 block text-sm font-semibold">
@@ -410,7 +453,7 @@ export default function NewTransaction() {
           </details>
 
           {totalPhotoKb > TOTAL_PHOTO_KB_WARNING && (
-            <p className="text-sm text-amber" role="status">
+            <p className="text-sm text-warning" role="status">
               รูปที่แนบมีขนาดรวมค่อนข้างใหญ่ (~{totalPhotoKb} KB) หากบันทึกไม่สำเร็จ ลองลดจำนวนรูป
             </p>
           )}

@@ -104,7 +104,7 @@ export default function WithdrawalRequestDocument({
           {hasChanges
             ? `แก้ไขล่าสุด ${formatDateTime(request.updatedAt)}`
             : "แก้ไขล่าสุด: ไม่มี"}
-          {hasChanges && <span className="ml-2 font-semibold text-amber">มีการแก้ไข</span>}
+          {hasChanges && <span className="ml-2 font-semibold text-warning">มีการแก้ไข</span>}
         </p>
       </footer>
     </div>

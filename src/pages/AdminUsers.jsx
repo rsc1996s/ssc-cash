@@ -202,7 +202,7 @@ function AddEmployeeForm({ open, onClose }) {
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full border border-paperLine rounded px-3 py-2 focus:border-teal"
+              className="w-full border border-paperLine rounded px-3 py-2 focus:border-primary"
             />
           </div>
           <div>
@@ -215,7 +215,7 @@ function AddEmployeeForm({ open, onClose }) {
               required
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full border border-paperLine rounded px-3 py-2 focus:border-teal"
+              className="w-full border border-paperLine rounded px-3 py-2 focus:border-primary"
             />
           </div>
           <div>
@@ -235,7 +235,7 @@ function AddEmployeeForm({ open, onClose }) {
               ))}
             </div>
           </div>
-          {error && <p className="text-sm text-rust">{error}</p>}
+          {error && <p className="text-sm text-danger">{error}</p>}
         </form>
       )}
 
@@ -243,7 +243,7 @@ function AddEmployeeForm({ open, onClose }) {
         <div className="max-w-sm">
           <p className="text-sm text-inkSoft mb-3 text-center">ตั้ง PIN ให้ {name} (6 หลัก)</p>
           <PinPad value={pin} onChange={setPin} maxLength={6} />
-          {error && <p className="text-sm text-rust mt-3 text-center">{error}</p>}
+          {error && <p className="text-sm text-danger mt-3 text-center">{error}</p>}
           <div className="flex gap-2 mt-4">
             <button
               type="button"
@@ -263,7 +263,7 @@ function AddEmployeeForm({ open, onClose }) {
         <div className="max-w-sm">
           <p className="text-sm text-inkSoft mb-3 text-center">พิมพ์ PIN อีกครั้งเพื่อยืนยัน</p>
           <PinPad value={pinConfirm} onChange={setPinConfirm} maxLength={pin.length} disabled={busy} />
-          {error && <p className="text-sm text-rust mt-3 text-center">{error}</p>}
+          {error && <p className="text-sm text-danger mt-3 text-center">{error}</p>}
           <div className="flex gap-2 mt-4">
             <button
               type="button"
@@ -460,7 +460,7 @@ export default function AdminUsers() {
           <button
             type="button"
             onClick={() => setShowAddForm(true)}
-            className="min-h-11 rounded-lg bg-teal px-3 text-sm font-medium text-white"
+            className="min-h-11 rounded-lg bg-primary px-3 text-sm font-medium text-white"
           >
             + เพิ่ม
           </button>
@@ -471,7 +471,7 @@ export default function AdminUsers() {
       </p>
 
       {migrationMode && (
-        <section className="bg-amber-light border border-amber/40 rounded-lg p-4 mb-6">
+        <section className="bg-warning-light border border-warning/40 rounded-lg p-4 mb-6">
           <h2 className="font-medium mb-1">ย้ายบัญชีไปใช้ชื่อผู้ใช้</h2>
           <p className="text-sm text-inkSoft mb-3">
             กำหนดชื่อผู้ใช้ให้ทุกบัญชีก่อนเปิดวิธีเข้าสู่ระบบใหม่; mapping และ PIN เดิมจะถูกย้าย/ลบในรายการเดียวกัน
@@ -499,7 +499,7 @@ export default function AdminUsers() {
                 <button
                   onClick={() => migrateUsername(profile)}
                   disabled={busyId === profile.id}
-                  className="bg-teal text-white rounded px-3 py-1.5 text-sm"
+                  className="bg-primary text-white rounded px-3 py-1.5 text-sm"
                 >
                   {busyId === profile.id ? "กำลังย้าย..." : "ย้ายบัญชี"}
                 </button>
@@ -516,7 +516,7 @@ export default function AdminUsers() {
         </section>
       )}
 
-      {pageError && <p className="text-sm text-rust mb-3">{pageError}</p>}
+      {pageError && <p className="text-sm text-danger mb-3">{pageError}</p>}
 
       {setup?.loginMode === "username" && (
         <AddEmployeeForm
@@ -557,7 +557,7 @@ export default function AdminUsers() {
                   <button
                     disabled={busyId === u.id}
                     onClick={() => setRole(u.id, "staff")}
-                    className="text-xs bg-teal text-white rounded px-3 py-1.5 font-medium"
+                    className="text-xs bg-primary text-white rounded px-3 py-1.5 font-medium"
                   >
                     อนุมัติเป็นพนักงาน
                   </button>
@@ -578,7 +578,7 @@ export default function AdminUsers() {
                   <button
                     disabled={busyId === u.id || u.id === user.uid}
                     onClick={() => setDisabled(u, u.disabled !== true)}
-                    className="text-xs border border-rust text-rust rounded px-3 py-1.5"
+                    className="text-xs border border-danger text-danger rounded px-3 py-1.5"
                   >
                     {u.disabled === true ? "เปิดใช้งาน" : "ปิดใช้งาน"}
                   </button>
@@ -622,7 +622,7 @@ export default function AdminUsers() {
                 onClick={() => setDisabled(u, u.disabled !== true)}
                 disabled={busyId === u.id || u.id === user.uid || migrationMode || !Number.isInteger(setup?.ownerCount)}
                 className={`text-xs rounded px-3 py-1.5 ${
-                  u.disabled === true ? "bg-teal text-white" : "border border-rust text-rust"
+                  u.disabled === true ? "bg-primary text-white" : "border border-danger text-danger"
                 }`}
               >
                 {u.disabled === true ? "เปิดใช้งาน" : "ปิดใช้งาน"}

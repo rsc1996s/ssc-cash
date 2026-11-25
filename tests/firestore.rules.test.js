@@ -34,6 +34,7 @@ function transactionData(overrides = {}) {
     createdBy: "staff-a",
     createdByName: "พนักงาน",
     createdAt: serverTimestamp(),
+    transactionDate: "2026-11-12",
     updatedAt: serverTimestamp(),
     reviewedBy: null,
     reviewedByName: null,
@@ -188,6 +189,9 @@ describe("Firestore rules", { concurrency: false }, () => {
     const firestore = testEnv.authenticatedContext("staff-a").firestore();
 
     await assertSucceeds(firestore.doc("transactions/staff-new").set(transactionData()));
+    await assertFails(firestore.doc("transactions/staff-invalid-date").set(transactionData({
+      transactionDate: "12/11/2026",
+    })));
     await assertFails(firestore.doc("transactions/staff-negative").set(transactionData({
       amount: -10,
     })));

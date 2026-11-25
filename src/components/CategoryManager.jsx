@@ -156,7 +156,7 @@ export default function CategoryManager() {
         </button>
       </form>
 
-      {error && <p role="alert" className="mb-3 text-sm text-rust">{error}</p>}
+      {error && <p role="alert" className="mb-3 text-sm text-danger">{error}</p>}
       {activeType.collectionName === "transferCategories" && uncataloguedCategories.length > 0 && (
         <section className="mb-5 rounded-xl border border-blue-200 bg-blue-50/60 p-3">
           <h3 className="mb-2 text-sm font-semibold">หมวดที่ยังไม่อยู่ในคลัง</h3>
@@ -191,7 +191,7 @@ export default function CategoryManager() {
                 type="button"
                 onClick={() => removeCategory(category)}
                 aria-label={`ลบหมวดหมู่ ${category.label}`}
-                className="min-h-11 min-w-11 shrink-0 rounded-lg border border-red-200 px-3 text-sm font-medium text-rust hover:bg-red-50"
+                className="min-h-11 min-w-11 shrink-0 rounded-lg border border-red-200 px-3 text-sm font-medium text-danger hover:bg-red-50"
               >
                 ลบ
               </button>

@@ -4,29 +4,33 @@ export default {
   theme: {
     extend: {
       colors: {
-        paper: "#F5F9FF",
-        paperLine: "#D7E3F3",
-        ink: "#172B4D",
-        inkSoft: "#53657A",
-        teal: {
-          DEFAULT: "#2563EB",
-          dark: "#1D4ED8",
-          light: "#EFF6FF",
+        paper: "rgb(var(--paper) / <alpha-value>)",
+        paperLine: "rgb(var(--line) / <alpha-value>)",
+        ink: "rgb(var(--ink) / <alpha-value>)",
+        inkSoft: "rgb(var(--ink-soft) / <alpha-value>)",
+        primary: {
+          DEFAULT: "rgb(var(--primary) / <alpha-value>)",
+          dark: "rgb(var(--primary-dark) / <alpha-value>)",
+          light: "rgb(var(--primary-light) / <alpha-value>)",
         },
-        amber: {
-          DEFAULT: "#854D0E",
-          light: "#FEF3C7",
+        warning: {
+          DEFAULT: "rgb(var(--warning) / <alpha-value>)",
+          light: "rgb(var(--warning-light) / <alpha-value>)",
         },
-        rust: {
-          DEFAULT: "#B91C1C",
-          light: "#FEF2F2",
+        danger: {
+          DEFAULT: "rgb(var(--danger) / <alpha-value>)",
+          light: "rgb(var(--danger-light) / <alpha-value>)",
         },
+        income: "rgb(var(--income) / <alpha-value>)",
+        expense: "rgb(var(--expense) / <alpha-value>)",
+        glass: "rgb(var(--glass) / <alpha-value>)",
+        glow: "rgb(var(--glow) / <alpha-value>)",
         sky: {
           500: "#0EA5E9",
           50: "#F0F9FF",
         },
-        surface: "#FFFFFF",
-        focus: "#2563EB",
+        surface: "rgb(var(--surface) / <alpha-value>)",
+        focus: "rgb(var(--primary) / <alpha-value>)",
       },
       fontFamily: {
         sans: ["'Noto Sans Thai'", "system-ui", "sans-serif"],
@@ -48,10 +52,14 @@ export default {
         lg: "0.875rem",
         xl: "1rem",
         "2xl": "1.25rem",
+        card: "1.5rem",
+        hero: "2rem",
       },
       boxShadow: {
         card: "0 1px 3px rgb(23 43 77 / 8%)",
         popover: "0 12px 32px rgb(23 43 77 / 16%)",
+        glass: "0 12px 40px rgb(23 43 77 / 10%)",
+        glow: "0 8px 32px rgb(37 99 235 / 25%)",
       },
     },
   },

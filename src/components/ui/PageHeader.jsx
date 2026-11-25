@@ -18,7 +18,7 @@ export default function PageHeader({ title, fallbackTo = "/", right = null }) {
   }
 
   return (
-    <header className="sticky top-[calc(3.5rem+env(safe-area-inset-top))] z-20 -mx-4 mb-4 flex min-h-16 items-center gap-2 border-b border-paperLine bg-white/95 px-4 py-2 shadow-sm backdrop-blur sm:-mx-6 sm:px-6 lg:top-0 lg:mx-0 lg:rounded-xl lg:border lg:px-4">
+    <header className="sticky top-[calc(3.5rem+env(safe-area-inset-top))] z-20 -mx-4 mb-4 flex min-h-16 items-center gap-2 border-b border-paperLine bg-white px-4 py-2 shadow-sm sm:-mx-6 sm:px-6 lg:top-0 lg:mx-0 lg:rounded-xl lg:border lg:px-4">
       <button
         type="button"
         onClick={goBack}

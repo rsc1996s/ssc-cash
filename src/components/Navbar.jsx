@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
+import NavigationLink from "./NavigationLink";
 import { signOut } from "firebase/auth";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { auth, db } from "../firebase";
@@ -7,11 +8,12 @@ import { useAuth } from "../context/AuthContext";
 import { initials } from "./Sidebar";
 import { PlusCircle, KeyRound, LogOut, Menu, X } from "lucide-react";
 import { getNavItems } from "./navItems";
+import Sheet from "./ui/Sheet";
 
 function NavBadge({ count }) {
   if (!count) return null;
   return (
-    <span className="inline-flex items-center justify-center min-w-[1.15rem] h-[1.15rem] px-1 rounded-full bg-rust text-white text-[10px] font-nums leading-none">
+    <span className="inline-flex items-center justify-center min-w-[1.15rem] h-[1.15rem] px-1 rounded-full bg-danger text-white text-[10px] font-nums leading-none">
       {count}
     </span>
   );
@@ -24,6 +26,8 @@ export default function Navbar() {
   const location = useLocation();
 
   const [menuOpen, setMenuOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
   const [pendingTxCount, setPendingTxCount] = useState(0);
   const [pendingUserCount, setPendingUserCount] = useState(0);
 
@@ -45,7 +49,24 @@ export default function Navbar() {
 
   useEffect(() => {
     setMenuOpen(false);
+    setShortcutsOpen(false);
   }, [location.pathname]);
+
+  useEffect(() => {
+    function updateFocus() {
+      const active = document.activeElement;
+      setKeyboardOpen(Boolean(active?.matches("input:not([type=checkbox]):not([type=radio]):not([type=file]), textarea, [contenteditable=true]")));
+    }
+    function onFocusOut() {
+      window.setTimeout(updateFocus, 0);
+    }
+    document.addEventListener("focusin", updateFocus);
+    document.addEventListener("focusout", onFocusOut);
+    return () => {
+      document.removeEventListener("focusin", updateFocus);
+      document.removeEventListener("focusout", onFocusOut);
+    };
+  }, []);
 
   async function handleLogout() {
     await signOut(auth);
@@ -69,7 +90,7 @@ export default function Navbar() {
 
   return (
     <>
-      <header className="no-print lg:hidden sticky top-0 z-20 border-b border-paperLine bg-white/95 pt-[env(safe-area-inset-top)] backdrop-blur">
+      <header className="no-print lg:hidden sticky top-0 z-20 border-b border-paperLine bg-white pt-[env(safe-area-inset-top)]">
         <div className="flex h-14 items-center justify-between px-4">
           <h1 className="truncate text-base font-semibold">{pageTitle}</h1>
           <button
@@ -111,7 +132,7 @@ export default function Navbar() {
             </div>
             <nav className="flex flex-col p-2">
               {navItems.map((item) => (
-                <Link
+                <NavigationLink
                   key={item.label}
                   to={item.to}
                   onClick={() => setMenuOpen(false)}
@@ -119,23 +140,23 @@ export default function Navbar() {
                     isActive(item.to) ? "bg-blue-50 text-blue-700" : "text-ink hover:bg-blue-50"
                   }`}
                 >
-                  <item.icon size={19} strokeWidth={2} />
+                  <item.icon size={20} strokeWidth={1.5} />
                   <span className="flex-1">{item.label}</span>
                   <NavBadge count={item.badge} />
-                </Link>
+                </NavigationLink>
               ))}
               <div className="my-2 border-t border-paperLine" />
-              <Link
+              <NavigationLink
                 to="/change-pin"
                 onClick={() => setMenuOpen(false)}
                 className="flex items-center gap-3 px-3 py-3.5 rounded-lg text-sm font-medium text-ink hover:bg-blue-50"
               >
                 <KeyRound size={19} className="text-inkSoft" />
                 เปลี่ยน PIN
-              </Link>
+              </NavigationLink>
               <button
                 onClick={handleLogout}
-                className="flex items-center gap-3 px-3 py-3.5 rounded-lg text-sm font-medium text-rust hover:bg-red-50"
+                className="flex items-center gap-3 px-3 py-3.5 rounded-lg text-sm font-medium text-danger hover:bg-red-50"
               >
                 <LogOut size={19} />
                 ออกจากระบบ
@@ -146,12 +167,23 @@ export default function Navbar() {
       )}
 
       {/* แถบเมนูล่าง — เข้าถึงเมนูหลักโดยไม่ต้องเอื้อมขึ้นบน */}
-      <MobileTabBar
+      {!keyboardOpen && <MobileTabBar
         isGuest={isGuest}
         navItems={navItems}
         isActive={isActive}
         onOpenMenu={() => setMenuOpen(true)}
-      />
+        onOpenShortcuts={() => setShortcutsOpen(true)}
+      />}
+      <Sheet open={shortcutsOpen} title="ทางลัด" onClose={() => setShortcutsOpen(false)}>
+        <div className="space-y-2">
+          <NavigationLink to="/new" onClick={() => setShortcutsOpen(false)} className="flex min-h-12 items-center rounded-xl border border-paperLine px-4 font-medium hover:bg-primary-light">
+            บันทึกรายการ
+          </NavigationLink>
+          <NavigationLink to="/transfers/withdrawals/new" onClick={() => setShortcutsOpen(false)} className="flex min-h-12 items-center rounded-xl border border-paperLine px-4 font-medium hover:bg-primary-light">
+            ใบเบิกเงินโอน
+          </NavigationLink>
+        </div>
+      </Sheet>
     </>
   );
 }
@@ -160,31 +192,31 @@ function TabItem({ to, icon: Icon, label, badge, active, onClick }) {
   const content = (
     <>
       <span className="relative">
-        <Icon size={21} strokeWidth={active ? 2.3 : 2} />
+        <Icon size={20} strokeWidth={1.5} />
         {!!badge && (
-          <span className="absolute -right-3 -top-2 inline-flex min-h-4 min-w-4 items-center justify-center rounded-full border border-white bg-rust px-1 text-[9px] leading-none text-white">
+          <span className="absolute -right-3 -top-2 inline-flex min-h-4 min-w-4 items-center justify-center rounded-full border border-white bg-danger px-1 text-[9px] leading-none text-white">
             {badge}
           </span>
         )}
       </span>
-      <span className={`text-xs leading-none ${active ? "font-semibold" : ""}`}>{label}</span>
+      {active && <span className="text-xs font-semibold">{label}</span>}
     </>
   );
-  const cls = `flex-1 flex flex-col items-center justify-center gap-1 py-2 min-h-[60px] ${
-    active ? "text-blue-700" : "text-inkSoft"
+  const cls = `relative flex min-h-11 min-w-11 flex-1 items-center justify-center gap-1 rounded-full px-2 ${
+    active ? "bg-primary-light text-primary-dark" : "text-inkSoft"
   }`;
   return onClick ? (
-    <button onClick={onClick} className={cls}>
+    <button type="button" aria-label={label} onClick={onClick} className={cls}>
       {content}
     </button>
   ) : (
-    <Link to={to} className={cls}>
+    <NavigationLink to={to} aria-label={label} aria-current={active ? "page" : undefined} className={cls}>
       {content}
-    </Link>
+    </NavigationLink>
   );
 }
 
-function MobileTabBar({ navItems, isGuest, isActive, onOpenMenu }) {
+function MobileTabBar({ navItems, isGuest, isActive, onOpenMenu, onOpenShortcuts }) {
   const home = navItems.find((item) => item.to === "/");
   const settings = navItems.find((item) => item.to === "/settings");
   const firstContext =
@@ -193,20 +225,19 @@ function MobileTabBar({ navItems, isGuest, isActive, onOpenMenu }) {
     navItems.find((item) => item.to === "/reports");
   const secondContext = navItems.find((item) => item.to === "/reports" && item !== firstContext);
   return (
-    <nav className="lg:hidden no-print fixed bottom-0 inset-x-0 z-20 flex items-stretch border-t border-paperLine bg-white pb-[env(safe-area-inset-bottom)]">
+    <nav aria-label="เมนูหลัก" className="no-print fixed inset-x-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-20 flex items-center gap-2 lg:hidden">
+      <div className="aurora-mobile-nav flex min-w-0 flex-1 items-center gap-1 rounded-full border border-white/80 p-1.5 shadow-glass">
       {home && <TabItem {...home} label="หน้าแรก" active={isActive("/")} />}
       {firstContext && <TabItem {...firstContext} label={firstContext.to === "/owner" ? "ตรวจสอบ" : firstContext.to === "/transfers" ? "ใบเบิก" : "รายงาน"} active={isActive(firstContext.to)} />}
-      {!isGuest && (
-        <Link to="/new" aria-label="เพิ่มรายการ" className="flex flex-1 flex-col items-center justify-center">
-          <span className="-mt-5 flex h-12 w-12 items-center justify-center rounded-full border-4 border-white bg-blue-600 text-white shadow-lg">
-            <PlusCircle size={24} />
-          </span>
-          <span className="text-xs font-medium text-blue-700">เพิ่ม</span>
-        </Link>
-      )}
       {secondContext && <TabItem {...secondContext} label="รายงาน" active={isActive(secondContext.to)} />}
       {settings && <TabItem {...settings} label="ตั้งค่า" active={isActive(settings.to)} />}
       <TabItem icon={Menu} label="เมนู" onClick={onOpenMenu} />
+      </div>
+      {!isGuest && (
+        <button type="button" aria-label="เปิดทางลัดเพิ่มรายการ" onClick={onOpenShortcuts} className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary-dark text-white shadow-glow">
+          <PlusCircle size={24} strokeWidth={1.5} />
+        </button>
+      )}
     </nav>
   );
 }

@@ -1,30 +1,33 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 import FeedbackProvider from "./components/ui/FeedbackProvider";
-import Login from "./pages/Login";
-import Register from "./pages/Register";
-import PendingApproval from "./pages/PendingApproval";
-import Home from "./pages/Home";
-import NewTransaction from "./pages/NewTransaction";
-import TransactionDetail from "./pages/TransactionDetail";
-import OwnerDashboard from "./pages/OwnerDashboard";
-import AdminUsers from "./pages/AdminUsers";
-import AdminFunds from "./pages/AdminFunds";
-import Reports from "./pages/Reports";
-import PrintVoucher from "./pages/PrintVoucher";
-import TransfersHub from "./pages/TransfersHub";
-import BankAccounts from "./pages/BankAccounts";
-import WithdrawalRequestForm from "./pages/WithdrawalRequestForm";
-import WithdrawalRequestPrint from "./pages/WithdrawalRequestPrint";
-import TransferPaymentForm from "./pages/TransferPaymentForm";
-import TransferPaymentPrint from "./pages/TransferPaymentPrint";
-import ChangePin from "./pages/ChangePin";
-import DailyClosings from "./pages/DailyClosings";
-import ActivityHistory from "./pages/ActivityHistory";
+import Loading from "./components/ui/Loading";
 import PageTransition from "./components/PageTransition";
-import Settings from "./pages/Settings";
-import SettingsCategories from "./pages/SettingsCategories";
+
+const Login = lazy(() => import("./pages/Login"));
+const Register = lazy(() => import("./pages/Register"));
+const PendingApproval = lazy(() => import("./pages/PendingApproval"));
+const Home = lazy(() => import("./pages/Home"));
+const NewTransaction = lazy(() => import("./pages/NewTransaction"));
+const TransactionDetail = lazy(() => import("./pages/TransactionDetail"));
+const OwnerDashboard = lazy(() => import("./pages/OwnerDashboard"));
+const AdminUsers = lazy(() => import("./pages/AdminUsers"));
+const AdminFunds = lazy(() => import("./pages/AdminFunds"));
+const Reports = lazy(() => import("./pages/Reports"));
+const PrintVoucher = lazy(() => import("./pages/PrintVoucher"));
+const TransfersHub = lazy(() => import("./pages/TransfersHub"));
+const BankAccounts = lazy(() => import("./pages/BankAccounts"));
+const WithdrawalRequestForm = lazy(() => import("./pages/WithdrawalRequestForm"));
+const WithdrawalRequestPrint = lazy(() => import("./pages/WithdrawalRequestPrint"));
+const TransferPaymentForm = lazy(() => import("./pages/TransferPaymentForm"));
+const TransferPaymentPrint = lazy(() => import("./pages/TransferPaymentPrint"));
+const ChangePin = lazy(() => import("./pages/ChangePin"));
+const DailyClosings = lazy(() => import("./pages/DailyClosings"));
+const ActivityHistory = lazy(() => import("./pages/ActivityHistory"));
+const Settings = lazy(() => import("./pages/Settings"));
+const SettingsCategories = lazy(() => import("./pages/SettingsCategories"));
 
 export default function App() {
   return (
@@ -32,6 +35,7 @@ export default function App() {
       <AuthProvider>
         <FeedbackProvider>
           <PageTransition>
+          <Suspense fallback={<div className="mx-auto max-w-6xl px-4"><Loading /></div>}>
           <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
@@ -217,6 +221,7 @@ export default function App() {
             }
           />
           </Routes>
+          </Suspense>
           </PageTransition>
         </FeedbackProvider>
       </AuthProvider>

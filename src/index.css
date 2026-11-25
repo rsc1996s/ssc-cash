@@ -2,10 +2,70 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --paper: 245 249 255;
+  --surface: 255 255 255;
+  --line: 215 227 243;
+  --ink: 23 43 77;
+  --ink-soft: 83 101 122;
+  --primary: 37 99 235;
+  --primary-dark: 29 78 216;
+  --primary-light: 239 246 255;
+  --warning: 133 77 14;
+  --warning-light: 254 243 199;
+  --danger: 185 28 28;
+  --danger-light: 254 242 242;
+  --income: 21 128 61;
+  --expense: 185 28 28;
+  --glass: 255 255 255;
+  --glow: 34 211 238;
+}
+
+.aurora-background {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 42rem 28rem at 5% 0%, rgb(37 99 235 / 9%), transparent 70%),
+    radial-gradient(ellipse 38rem 26rem at 100% 0%, rgb(34 211 238 / 8%), transparent 70%);
+}
+
+.aurora-sidebar,
+.aurora-mobile-nav,
+.aurora-auth-card {
+  background: rgb(255 255 255 / 90%);
+  box-shadow: 0 12px 40px rgb(23 43 77 / 10%);
+}
+
+@supports (backdrop-filter: blur(16px)) or (-webkit-backdrop-filter: blur(16px)) {
+  .aurora-sidebar,
+  .aurora-mobile-nav,
+  .aurora-auth-card {
+    background: rgb(255 255 255 / 80%);
+    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px);
+  }
+}
+
+.aurora-hero {
+  background:
+    radial-gradient(ellipse at 85% 10%, rgb(14 165 233 / 32%), transparent 55%),
+    radial-gradient(ellipse at 15% 100%, rgb(37 99 235 / 35%), transparent 60%),
+    linear-gradient(135deg, #0b1b3a, #0f2a5c);
+}
+
+.aurora-auth {
+  background:
+    radial-gradient(ellipse at 10% 10%, rgb(37 99 235 / 14%), transparent 55%),
+    radial-gradient(ellipse at 90% 5%, rgb(34 211 238 / 10%), transparent 50%),
+    rgb(var(--paper));
+}
+
 body {
   min-width: 320px;
-  background: #F5F9FF;
-  color: #172B4D;
+  background: rgb(var(--paper));
+  color: rgb(var(--ink));
   font-family: "Noto Sans Thai", system-ui, sans-serif;
   font-size: 1rem;
   -webkit-font-smoothing: antialiased;
@@ -50,11 +110,10 @@ input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
 select,
 textarea {
   min-height: 44px;
-  padding: 0.625rem 0.75rem;
-  border-color: #D7E3F3;
+  border-color: rgb(var(--line));
   border-radius: 0.75rem;
-  background-color: #fff;
-  color: #172B4D;
+  background-color: rgb(var(--surface));
+  color: rgb(var(--ink));
   font-size: 1rem;
   line-height: 1.5rem;
 }
@@ -65,7 +124,7 @@ textarea {
 
 input::placeholder,
 textarea::placeholder {
-  color: #53657A;
+  color: rgb(var(--ink-soft));
   opacity: 1;
 }
 
@@ -87,7 +146,7 @@ button {
 
 /* Focus visibility */
 :focus-visible {
-  outline: 3px solid #1D4ED8;
+  outline: 3px solid rgb(var(--primary-dark));
   outline-offset: 2px;
 }
 
@@ -103,6 +162,13 @@ button {
 }
 
 @media print {
+  .aurora-background {
+    display: none !important;
+  }
+  .aurora-hero {
+    background: white !important;
+    color: black !important;
+  }
   *,
   *::before,
   *::after {
@@ -149,6 +215,16 @@ button {
   .print-metadata {
     break-inside: avoid;
     page-break-inside: avoid;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .aurora-sidebar,
+  .aurora-mobile-nav,
+  .aurora-auth-card {
+    background: white;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
   }
 }
 

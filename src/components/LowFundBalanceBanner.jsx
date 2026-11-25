@@ -36,7 +36,7 @@ export default function LowFundBalanceBanner() {
   if (lowFunds.length === 0) return null;
 
   return (
-    <div role="status" className="mb-6 rounded-xl border border-amber/50 bg-amber-light px-4 py-3 text-sm text-amber">
+    <div role="status" className="mb-6 rounded-xl border border-warning/50 bg-warning-light px-4 py-3 text-sm text-warning">
       <div className="mb-1 font-semibold">เงินหมุนเวียนใกล้หมด</div>
       <ul className="space-y-0.5">
         {lowFunds.map((f) => (

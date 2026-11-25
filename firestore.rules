@@ -153,7 +153,7 @@ service cloud.firestore {
           'itemDescription', 'changeAmount', 'paymentMethod', 'category', 'note',
           'receiptPhotoURL', 'receiptPhotoURLs', 'changePhotoURL', 'status',
           'createdBy', 'createdByName', 'createdAt', 'updatedAt',
-          'reviewedBy', 'reviewedByName', 'reviewedAt', 'reviewNote',
+          'transactionDate', 'reviewedBy', 'reviewedByName', 'reviewedAt', 'reviewNote',
           'editHistory', 'approvalSignatureURL', 'auditLogId'
         ]) &&
         data.keys().hasAll([
@@ -178,6 +178,9 @@ service cloud.firestore {
         data.createdBy is string &&
         data.createdByName is string && data.createdByName.size() <= 200 &&
         data.createdAt is timestamp &&
+        (!data.keys().hasAny(['transactionDate']) ||
+          (data.transactionDate is string &&
+            data.transactionDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$'))) &&
         data.updatedAt == request.time &&
         data.editHistory is list && data.editHistory.size() == 0 &&
         validPhotoData(data);

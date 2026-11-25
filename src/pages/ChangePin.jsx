@@ -98,7 +98,7 @@ export default function ChangePin() {
           <p className="text-sm text-inkSoft mb-5">ใช้ PIN ใหม่ในการเข้าสู่ระบบครั้งถัดไป</p>
           <button
             onClick={() => navigate("/")}
-            className="bg-teal text-white rounded px-5 py-2.5 text-sm font-medium"
+            className="bg-primary text-white rounded px-5 py-2.5 text-sm font-medium"
           >
             กลับหน้าหลัก
           </button>
@@ -132,7 +132,7 @@ export default function ChangePin() {
           <div>
             <p className="text-sm text-inkSoft mb-3">พิมพ์ PIN ปัจจุบันเพื่อยืนยันตัวตน</p>
             <PinPad value={currentPin} onChange={setCurrentPin} maxLength={6} disabled={busy} />
-            {error && <p className="text-sm text-rust mt-3">{error}</p>}
+            {error && <p className="text-sm text-danger mt-3">{error}</p>}
           </div>
         )}
 
@@ -140,7 +140,7 @@ export default function ChangePin() {
           <div>
             <p className="text-sm text-inkSoft mb-3">ตั้ง PIN ใหม่ (6 หลัก)</p>
             <PinPad value={newPin} onChange={setNewPin} maxLength={6} />
-            {error && <p className="text-sm text-rust mt-3">{error}</p>}
+            {error && <p className="text-sm text-danger mt-3">{error}</p>}
           </div>
         )}
 
@@ -148,7 +148,7 @@ export default function ChangePin() {
           <div>
             <p className="text-sm text-inkSoft mb-3">พิมพ์ PIN ใหม่อีกครั้งเพื่อยืนยัน</p>
             <PinPad value={newPinConfirm} onChange={setNewPinConfirm} maxLength={newPin.length} disabled={busy} />
-            {error && <p className="text-sm text-rust mt-3">{error}</p>}
+            {error && <p className="text-sm text-danger mt-3">{error}</p>}
           </div>
         )}
       </div>

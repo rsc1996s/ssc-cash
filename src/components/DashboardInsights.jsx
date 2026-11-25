@@ -97,7 +97,7 @@ export default function DashboardInsights({ funds, topups, transactions, pending
       </div>
 
       {pendingCount !== undefined && (
-        <Link to="/owner" className="block rounded-xl border border-amber/30 bg-amber-light p-4 text-sm font-semibold text-amber hover:border-amber">
+        <Link to="/owner" className="block rounded-xl border border-warning/30 bg-warning-light p-4 text-sm font-semibold text-warning hover:border-warning">
           มี {pendingCount} รายการรอตรวจสอบ · ไปหน้าตรวจสอบ
         </Link>
       )}

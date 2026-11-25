@@ -74,11 +74,11 @@ export default function SignaturePad({ onChange }) {
       />
       <div className="flex justify-between items-center mt-1">
         <span className="text-xs text-inkSoft">ลงลายเซ็นในกรอบด้านบนเพื่อยืนยันการอนุมัติ</span>
-        <button type="button" onClick={clear} className="text-xs text-rust">
+        <button type="button" onClick={clear} className="text-xs text-danger">
           ล้างลายเซ็น
         </button>
       </div>
-      {!hasSignature && <p className="text-xs text-amber mt-1">ยังไม่ได้เซ็น</p>}
+      {!hasSignature && <p className="text-xs text-warning mt-1">ยังไม่ได้เซ็น</p>}
     </div>
   );
 }

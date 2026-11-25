@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
+import NavigationLink from "./NavigationLink";
 import { signOut } from "firebase/auth";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { auth, db } from "../firebase";
@@ -14,7 +15,7 @@ import { getNavItems } from "./navItems";
 function NavBadge({ count }) {
   if (!count) return null;
   return (
-    <span className="inline-flex items-center justify-center min-w-[1.15rem] h-[1.15rem] px-1 rounded-full bg-rust text-white text-[10px] font-nums leading-none">
+    <span className="inline-flex items-center justify-center min-w-[1.15rem] h-[1.15rem] px-1 rounded-full bg-danger text-white text-[10px] font-nums leading-none">
       {count}
     </span>
   );
@@ -63,39 +64,39 @@ export default function Sidebar() {
 
   return (
     <aside
-      className={`no-print hidden lg:flex flex-col fixed inset-y-0 left-0 ${SIDEBAR_WIDTH} bg-white text-ink border-r border-paperLine z-20`}
+      className={`aurora-sidebar no-print hidden lg:flex flex-col fixed inset-y-3 left-3 ${SIDEBAR_WIDTH} rounded-card text-ink border border-paperLine z-20`}
     >
       <div className="px-5 py-5 border-b border-paperLine shrink-0">
-        <Link to="/" className="block min-h-11 py-2 text-lg font-semibold leading-snug">
+        <NavigationLink to="/" className="block min-h-11 py-2 text-lg font-semibold leading-snug">
           บันทึกเงินสดหน้าร้าน
-        </Link>
+        </NavigationLink>
       </div>
 
       {!isGuest && (
         <div className="px-4 pt-4 shrink-0">
-          <Link
+          <NavigationLink
             to="/new"
             className="flex min-h-11 items-center justify-center gap-2 rounded-lg bg-blue-700 px-3 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
           >
             <PlusCircle size={18} />
             บันทึกใหม่
-          </Link>
+          </NavigationLink>
         </div>
       )}
 
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
         {navItems.map((item) => (
-          <Link
+          <NavigationLink
             key={item.label}
             to={item.to}
             className={`flex min-h-11 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus ${
               isActive(item.to) ? "bg-blue-50 text-blue-700" : "text-inkSoft hover:text-blue-700 hover:bg-blue-50"
             }`}
           >
-            <item.icon size={18} strokeWidth={2} />
+            <item.icon size={20} strokeWidth={1.5} />
             <span className="flex-1">{item.label}</span>
             <NavBadge count={item.badge} />
-          </Link>
+          </NavigationLink>
         ))}
       </nav>
 
@@ -111,16 +112,16 @@ export default function Sidebar() {
             </div>
           </div>
         </div>
-        <Link
+        <NavigationLink
           to="/change-pin"
           className="flex min-h-11 items-center gap-2.5 rounded-lg px-2 py-2.5 text-sm text-inkSoft hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
         >
           <KeyRound size={16} />
           เปลี่ยน PIN
-        </Link>
+        </NavigationLink>
         <button
           onClick={handleLogout}
-          className="flex min-h-11 w-full items-center gap-2.5 rounded-lg px-2 py-2.5 text-sm text-rust hover:bg-red-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+          className="flex min-h-11 w-full items-center gap-2.5 rounded-lg px-2 py-2.5 text-sm text-danger hover:bg-red-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
         >
           <LogOut size={16} />
           ออกจากระบบ

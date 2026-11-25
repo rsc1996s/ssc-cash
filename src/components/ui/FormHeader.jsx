@@ -12,7 +12,7 @@ export default function FormHeader({
   formId,
 }) {
   return (
-    <header className="sticky top-[calc(3.5rem+env(safe-area-inset-top))] z-20 -mx-4 mb-4 flex min-h-16 items-center gap-2 border-b border-paperLine bg-white/95 px-4 py-2 shadow-sm backdrop-blur sm:-mx-6 sm:px-6 lg:top-0 lg:mx-0 lg:rounded-xl lg:border lg:px-4">
+    <header className="sticky top-[calc(3.5rem+env(safe-area-inset-top))] z-20 -mx-4 mb-4 flex min-h-16 items-center gap-2 border-b border-paperLine bg-white px-4 py-2 shadow-sm sm:-mx-6 sm:px-6 lg:top-0 lg:mx-0 lg:rounded-xl lg:border lg:px-4">
       <Button variant="secondary" onClick={onCancel} className="min-h-11 shrink-0 px-3">
         {cancelLabel}
       </Button>

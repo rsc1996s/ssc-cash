@@ -139,7 +139,7 @@ export default function OwnerDashboard() {
                 <Link
                   to={`/transaction/${r.id}/print`}
                   target="_blank"
-                  className="shrink-0 text-xs border border-paperLine rounded px-3 py-2 hover:border-teal hover:text-teal"
+                  className="shrink-0 text-xs border border-paperLine rounded px-3 py-2 hover:border-primary hover:text-primary"
                 >
                   พิมพ์
                 </Link>

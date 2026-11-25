@@ -3,19 +3,19 @@ import Card from "./ui/Card";
 const TONE_STYLES = {
   income: {
     card: "bg-white border border-paperLine shadow-sm",
-    iconWrap: "bg-teal-light text-teal",
+    iconWrap: "bg-primary-light text-primary",
     value: "text-green-700",
     label: "text-inkSoft",
   },
   expense: {
     card: "bg-white border border-paperLine shadow-sm",
-    iconWrap: "bg-rust-light text-rust",
+    iconWrap: "bg-danger-light text-danger",
     value: "text-red-600",
     label: "text-inkSoft",
   },
   // การ์ดหลัก (เช่น คงเหลือสุทธิ) ใช้พื้นเข้มเด่นกว่า 2 การ์ดที่เหลือ เพื่อดึงสายตาไปที่ตัวเลขสำคัญที่สุด
   primary: {
-    card: "bg-gradient-to-br from-blue-600 to-sky-500 shadow-sm",
+    card: "aurora-hero rounded-hero border-transparent shadow-glow",
     iconWrap: "bg-white/15 text-white",
     value: "text-white",
     label: "text-white/90",

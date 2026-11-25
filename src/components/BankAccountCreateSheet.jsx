@@ -182,7 +182,7 @@ export default function BankAccountCreateSheet({
       }
     >
       {!isOwner ? (
-        <p role="alert" className="text-sm text-rust">เฉพาะเจ้าของร้านเท่านั้นที่เพิ่มบัญชีในคลังได้</p>
+        <p role="alert" className="text-sm text-danger">เฉพาะเจ้าของร้านเท่านั้นที่เพิ่มบัญชีในคลังได้</p>
       ) : (
         <form id="quick-bank-account-form" onSubmit={addAccount} noValidate className="space-y-3">
           <label className="block text-sm font-medium">
@@ -234,11 +234,11 @@ export default function BankAccountCreateSheet({
             placeholder="หมายเหตุ (ถ้ามี)"
             aria-label="หมายเหตุ"
           />
-          <p className="rounded-lg bg-amber-light p-3 text-sm text-amber">
+          <p className="rounded-lg bg-warning-light p-3 text-sm text-warning">
             ตรวจสอบข้อมูลให้ถูกต้องก่อนบันทึก บัญชีที่เพิ่มแล้วแก้ไขไม่ได้
           </p>
           {!accountsLoaded && <p role="status" className="text-sm text-inkSoft">กำลังตรวจสอบบัญชีซ้ำ...</p>}
-          {error && <p role="alert" className="text-sm text-rust">{error}</p>}
+          {error && <p role="alert" className="text-sm text-danger">{error}</p>}
           {duplicate?.side === side && (
             <button type="button" onClick={useDuplicate} className="min-h-12 w-full rounded-lg border border-blue-200 bg-blue-50 px-3 text-sm font-medium text-blue-800">
               ใช้บัญชีเดิม: {duplicate.bankName} · {duplicate.accountNumber} ({duplicate.accountName})

@@ -29,7 +29,7 @@ export default function PinPad({ value, onChange, maxLength = 6, disabled }) {
             key={d}
             disabled={disabled}
             onClick={() => press(d)}
-            className="py-3 rounded border border-paperLine text-lg font-nums hover:border-teal disabled:opacity-50"
+            className="min-h-14 rounded-full border border-paperLine bg-white text-lg font-nums hover:border-primary disabled:opacity-50"
           >
             {d}
           </button>
@@ -39,7 +39,7 @@ export default function PinPad({ value, onChange, maxLength = 6, disabled }) {
           type="button"
           disabled={disabled}
           onClick={() => press("0")}
-          className="py-3 rounded border border-paperLine text-lg font-nums hover:border-teal disabled:opacity-50"
+          className="min-h-14 rounded-full border border-paperLine bg-white text-lg font-nums hover:border-primary disabled:opacity-50"
         >
           0
         </button>
@@ -47,7 +47,8 @@ export default function PinPad({ value, onChange, maxLength = 6, disabled }) {
           type="button"
           disabled={disabled}
           onClick={backspace}
-          className="py-3 rounded border border-paperLine text-lg text-rust hover:border-rust disabled:opacity-50"
+          aria-label="ลบตัวเลขล่าสุด"
+          className="min-h-14 rounded-full border border-paperLine bg-white text-lg text-danger hover:border-danger disabled:opacity-50"
         >
           ⌫
         </button>
