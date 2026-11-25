@@ -1,7 +1,5 @@
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
-import { db } from "../firebase";
 import Layout from "../components/Layout";
 import StatusBadge from "../components/ui/StatusBadge";
 import TypeBadge from "../components/TypeBadge";
@@ -10,55 +8,41 @@ import EmptyState from "../components/ui/EmptyState";
 import Loading from "../components/ui/Loading";
 import SectionTitle from "../components/ui/SectionTitle";
 import Card from "../components/ui/Card";
-import { formatBaht, formatDateTime } from "../lib/format";
+import { formatBaht, formatDateTime, STATUS_LABEL } from "../lib/format";
+import { evidencePhotos } from "../lib/evidence";
 import { ClipboardCheck } from "lucide-react";
 import DashboardInsights from "../components/DashboardInsights";
 import TransactionFilterPanel from "../components/TransactionFilterPanel";
 import useTransactionFilters from "../components/useTransactionFilters";
 import { downloadCsv } from "../components/csvExport";
+import useScopedCashData from "../hooks/useScopedCashData";
 
 export default function OwnerDashboard() {
-  const [rows, setRows] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [funds, setFunds] = useState([]);
-  const [topups, setTopups] = useState([]);
+  const { transactions, loading, funds, topups, error } = useScopedCashData();
+  const rows = useMemo(() => [...transactions].sort((a, b) =>
+    (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0)), [transactions]);
   const [visibleCount, setVisibleCount] = useState(10);
-
-  useEffect(() => {
-    const q = query(collection(db, "transactions"), orderBy("createdAt", "desc"));
-    const unsub = onSnapshot(q, (snap) => {
-      setRows(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-      setLoading(false);
-    });
-    const unsubFunds = onSnapshot(collection(db, "funds"), (snap) => {
-      setFunds(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-    });
-    const unsubTopups = onSnapshot(collection(db, "fundTopups"), (snap) =>
-      setTopups(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
-    );
-    return () => {
-      unsub();
-      unsubFunds();
-      unsubTopups();
-    };
-  }, []);
 
   const { filters, updateFilter, clearFilters, filtered, categories, authors, totals } =
     useTransactionFilters(rows, { initialStatus: "pending" });
   const pendingCount = rows.filter((r) => r.status === "pending").length;
   const exportRows = () => downloadCsv("รายการทั้งหมด.csv",
-    ["วันที่", "รายละเอียด", "หมวดหมู่", "ประเภท", "จำนวนเงิน", "สถานะ", "ผู้บันทึก", "งบค่าใช้จ่าย"],
+    ["วันที่", "รายละเอียด", "หมวดหมู่", "ประเภท", "จำนวนเงิน", "สถานะ", "จำนวนหลักฐาน", "ผู้บันทึก", "งบค่าใช้จ่าย"],
     filtered.map((row) => [
       formatDateTime(row.createdAt),
       row.itemDescription,
       row.category,
       row.type === "income" ? "รายรับ" : "รายจ่าย",
       Number(row.amount) || 0,
-      row.status,
+      STATUS_LABEL[row.status] || row.status,
+      evidencePhotos(row).length,
       row.createdByName,
       row.fundLabel,
     ])
   );
+
+  if (loading) return <Layout><Loading label="กำลังโหลดข้อมูล" /></Layout>;
+  if (error) return <Layout><p role="alert" className="text-sm text-danger">โหลดข้อมูลไม่สำเร็จ กรุณาตรวจสอบสิทธิ์และการเชื่อมต่อ</p></Layout>;
 
   return (
     <Layout>
@@ -70,6 +54,14 @@ export default function OwnerDashboard() {
         pendingCount={pendingCount}
       />
       <SectionTitle title="ตรวจสอบรายการทั้งหมด" />
+      <div className="mb-3 flex flex-wrap gap-2 text-sm">
+        <button type="button" onClick={() => updateFilter("status", "needs_evidence")} className="rounded-lg border border-warning/40 bg-warning-light px-3 py-2 text-warning">
+          รอหลักฐาน {rows.filter((row) => row.status === "needs_evidence").length} รายการ
+        </button>
+        <span className="rounded-lg border border-paperLine bg-white px-3 py-2 text-inkSoft">
+          ไม่มีหลักฐานแนบ {rows.filter((row) => evidencePhotos(row).length === 0).length} รายการ
+        </span>
+      </div>
       <TransactionFilterPanel
         filters={filters}
         updateFilter={updateFilter}

@@ -2,6 +2,7 @@ import { STATUS_LABEL } from "../../lib/format";
 
 const COLORS = {
   pending: "bg-warning-light text-warning",
+  needs_evidence: "bg-warning-light text-warning",
   approved: "bg-green-50 text-green-800",
   rejected: "bg-red-50 text-red-700",
   voided: "bg-slate-100 text-slate-700",

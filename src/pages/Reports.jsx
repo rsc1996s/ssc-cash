@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { collection, query, where, orderBy, onSnapshot } from "firebase/firestore";
-import { db } from "../firebase";
 import Layout from "../components/Layout";
 import { formatBaht, formatDateTime, TYPE_LABEL, STATUS_LABEL } from "../lib/format";
+import { evidencePhotos } from "../lib/evidence";
 import { buildFundLedger, statementForRange } from "../lib/ledger";
 import OverviewCharts from "../components/OverviewCharts";
 import { useAuth } from "../context/AuthContext";
@@ -12,6 +11,7 @@ import TransactionFilterPanel from "../components/TransactionFilterPanel";
 import Loading from "../components/ui/Loading";
 import SegmentedTabs from "../components/ui/SegmentedTabs";
 import SearchPicker from "../components/ui/SearchPicker";
+import useScopedCashData from "../hooks/useScopedCashData";
 import {
   Cell,
   Pie,
@@ -52,11 +52,8 @@ function reportRange(filters) {
 
 export default function Reports() {
   const { isOwner } = useAuth();
-  const [funds, setFunds] = useState([]);
-  const [topups, setTopups] = useState([]);
-  const [transactions, setTransactions] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(null);
+  const { funds, topups, transactions, loading, error } = useScopedCashData();
+  const loadError = error ? "โหลดข้อมูลรายงานไม่สำเร็จ กรุณาตรวจสอบการเชื่อมต่อและสิทธิ์ Firestore" : null;
   const [fundId, setFundId] = useState("");
   const [initialFromDate] = useState(() => {
     const d = new Date();
@@ -68,37 +65,11 @@ export default function Reports() {
   const [visibleCount, setVisibleCount] = useState(10);
 
   useEffect(() => {
-    const handleLoadError = (error) => {
-      console.error("โหลดข้อมูลรายงานไม่สำเร็จ:", error);
-      setLoadError("โหลดข้อมูลรายงานไม่สำเร็จ กรุณาตรวจสอบการเชื่อมต่อและสิทธิ์ Firestore");
-      setLoading(false);
-    };
-    const unsub1 = onSnapshot(collection(db, "funds"), (snap) => {
-      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      setFunds(list);
-      setFundId((cur) => cur || list[0]?.id || "");
-    }, handleLoadError);
-    const unsub2 = onSnapshot(
-      collection(db, "fundTopups"),
-      (snap) => setTopups(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
-      handleLoadError
-    );
-    const transactionQuery = isOwner
-      ? query(collection(db, "transactions"), orderBy("createdAt", "desc"))
-      : query(collection(db, "transactions"), where("status", "==", "approved"));
-    const unsub3 = onSnapshot(transactionQuery, (snap) => {
-      setTransactions(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-      setLoading(false);
-    }, handleLoadError);
-    return () => {
-      unsub1();
-      unsub2();
-      unsub3();
-    };
-  }, [isOwner]);
+    if (!loading) setFundId((current) => funds.some((fund) => fund.id === current) ? current : funds[0]?.id || "");
+  }, [funds, loading]);
 
   const fund = funds.find((f) => f.id === fundId);
-  const reportTransactions = transactions.filter((transaction) => transaction.fundId === fundId);
+  const reportTransactions = transactions.filter((transaction) => transaction.fundId === fundId && (isOwner || transaction.status === "approved"));
   const { filters, updateFilter, clearFilters, filtered, categories, authors, totals } =
     useTransactionFilters(reportTransactions, {
       getDate: reportDate,
@@ -130,23 +101,27 @@ export default function Reports() {
   }, [filtered]);
 
   const exportRows = () => downloadCsv("รายงานรายการ.csv",
-    ["วันที่", "รายละเอียด", "หมวดหมู่", "ประเภท", "จำนวนเงิน", "สถานะ", "ผู้บันทึก", "งบค่าใช้จ่าย"],
+    ["วันที่", "รายละเอียด", "หมวดหมู่", "ประเภท", "จำนวนเงิน", "สถานะ", "จำนวนหลักฐาน", "ผู้บันทึก", "งบค่าใช้จ่าย"],
     filtered.map((row) => [
       formatDateTime(row.reviewedAt || row.createdAt),
       row.itemDescription,
       row.category,
       row.type === "income" ? "รายรับ" : "รายจ่าย",
       Number(row.amount) || 0,
-      row.status || "approved",
+      STATUS_LABEL[row.status || "approved"] || row.status,
+      evidencePhotos(row).length,
       row.createdByName,
       row.fundLabel,
     ])
   );
 
+  if (loading) return <Layout><Loading label="กำลังโหลดรายงาน" /></Layout>;
+  if (loadError) return <Layout><p role="alert" className="text-sm text-danger">{loadError}</p></Layout>;
+
   return (
     <Layout>
       <div className="no-print mb-4 flex items-center justify-between">
-        <h1 className="text-lg font-bold">รายงาน Statement & ภาพรวม</h1>
+        <h1 className="text-lg font-bold">รายงาน Statement & ภาพรวม{!isOwner && " · งบที่คุณดูแล"}</h1>
         {statement && (
           <button
             onClick={() => window.print()}

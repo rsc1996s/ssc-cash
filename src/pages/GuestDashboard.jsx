@@ -1,7 +1,5 @@
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { collection, query, where, onSnapshot } from "firebase/firestore";
-import { db } from "../firebase";
 import Layout from "../components/Layout";
 import StatusBadge from "../components/ui/StatusBadge";
 import TypeBadge from "../components/TypeBadge";
@@ -15,33 +13,14 @@ import DashboardInsights from "../components/DashboardInsights";
 import TransactionFilterPanel from "../components/TransactionFilterPanel";
 import useTransactionFilters from "../components/useTransactionFilters";
 import { downloadCsv } from "../components/csvExport";
+import { evidencePhotos } from "../lib/evidence";
+import useScopedCashData from "../hooks/useScopedCashData";
+import CashFlowChart from "../components/CashFlowChart";
 
 export default function GuestDashboard() {
-  const [rows, setRows] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [topups, setTopups] = useState([]);
-  const [funds, setFunds] = useState([]);
+  const { transactions, loading, funds, topups, error, empty } = useScopedCashData();
+  const rows = useMemo(() => transactions.filter((row) => row.status === "approved"), [transactions]);
   const [visibleCount, setVisibleCount] = useState(10);
-
-  useEffect(() => {
-    // guest อ่านได้เฉพาะรายการที่ "อนุมัติแล้ว" เท่านั้น (บังคับที่ Firestore rules ด้วย)
-    const q = query(collection(db, "transactions"), where("status", "==", "approved"));
-    const unsub1 = onSnapshot(q, (snap) => {
-      setRows(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-      setLoading(false);
-    });
-    const unsub2 = onSnapshot(collection(db, "funds"), (snap) =>
-      setFunds(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
-    );
-    const unsub3 = onSnapshot(collection(db, "fundTopups"), (snap) =>
-      setTopups(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
-    );
-    return () => {
-      unsub1();
-      unsub2();
-      unsub3();
-    };
-  }, []);
 
   const { filters, updateFilter, clearFilters, filtered, categories, authors, totals } =
     useTransactionFilters(rows);
@@ -49,7 +28,7 @@ export default function GuestDashboard() {
     (a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0)
   );
   const exportRows = () => downloadCsv("รายการที่อนุมัติ.csv",
-    ["วันที่", "รายละเอียด", "หมวดหมู่", "ประเภท", "จำนวนเงิน", "สถานะ", "ผู้บันทึก", "งบค่าใช้จ่าย"],
+    ["วันที่", "รายละเอียด", "หมวดหมู่", "ประเภท", "จำนวนเงิน", "สถานะ", "จำนวนหลักฐาน", "ผู้บันทึก", "งบค่าใช้จ่าย"],
     filteredRows.map((row) => [
       formatDateTime(row.createdAt),
       row.itemDescription,
@@ -57,13 +36,20 @@ export default function GuestDashboard() {
       row.type === "income" ? "รายรับ" : "รายจ่าย",
       Number(row.amount) || 0,
       "อนุมัติแล้ว",
+      evidencePhotos(row).length,
       row.createdByName,
       row.fundLabel,
     ])
   );
 
+  if (loading) return <Layout><Loading label="กำลังโหลดงบที่คุณดูแล" /></Layout>;
+  if (error) return <Layout><p role="alert" className="text-sm text-danger">โหลดข้อมูลงบไม่สำเร็จ กรุณาตรวจสอบสิทธิ์และการเชื่อมต่อ</p></Layout>;
+
   return (
     <Layout>
+      <p className="mb-3 text-sm text-inkSoft">งบที่คุณดูแล</p>
+      {empty && <p className="mb-4 rounded-lg bg-warning-light p-3 text-sm text-warning">ยังไม่ได้รับมอบหมายงบ ติดต่อแอดมิน</p>}
+      <CashFlowChart transactions={rows} />
       <DashboardInsights funds={funds} topups={topups} transactions={rows} />
 
       <SectionTitle

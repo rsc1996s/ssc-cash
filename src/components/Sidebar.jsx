@@ -11,6 +11,7 @@ import {
   LogOut,
 } from "lucide-react";
 import { getNavItems } from "./navItems";
+import useScopedCashData from "../hooks/useScopedCashData";
 
 function NavBadge({ count }) {
   if (!count) return null;
@@ -33,21 +34,17 @@ export default function Sidebar() {
   const { profile, isOwner, isGuest, isStaff } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [pendingTxCount, setPendingTxCount] = useState(0);
+  const { transactions } = useScopedCashData();
+  const pendingTxCount = isOwner ? transactions.filter((row) => row.status === "pending").length : 0;
   const [pendingUserCount, setPendingUserCount] = useState(0);
 
   useEffect(() => {
     if (!isOwner) return;
-    const unsub1 = onSnapshot(
-      query(collection(db, "transactions"), where("status", "==", "pending")),
-      (snap) => setPendingTxCount(snap.size)
-    );
     const unsub2 = onSnapshot(
       query(collection(db, "users"), where("role", "==", "pending")),
       (snap) => setPendingUserCount(snap.size)
     );
     return () => {
-      unsub1();
       unsub2();
     };
   }, [isOwner]);
@@ -68,7 +65,7 @@ export default function Sidebar() {
     >
       <div className="px-5 py-5 border-b border-paperLine shrink-0">
         <NavigationLink to="/" className="block min-h-11 py-2 text-lg font-semibold leading-snug">
-          บันทึกเงินสดหน้าร้าน
+          SC-ACC
         </NavigationLink>
       </div>
 

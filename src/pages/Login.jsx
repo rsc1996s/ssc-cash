@@ -89,7 +89,7 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-paper px-4">
       <div className="w-full max-w-sm bg-white border border-paperLine rounded-lg p-6 text-center">
         <h1 className="text-xl font-semibold mb-1">เข้าสู่ระบบ</h1>
-        <p className="text-sm text-inkSoft mb-5">บันทึกรายรับ-รายจ่ายหน้าร้าน</p>
+        <p className="text-sm text-inkSoft mb-5">SC-ACC</p>
 
         {loginMode === null ? (
           <p className="text-sm text-inkSoft">กำลังโหลดการตั้งค่าการเข้าสู่ระบบ...</p>

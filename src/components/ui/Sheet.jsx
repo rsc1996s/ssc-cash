@@ -12,10 +12,7 @@ export default function Sheet({ open, title, onClose, children, footer, header }
   onCloseRef.current = onClose;
 
   useEffect(() => {
-    if (!open) {
-      historyAdded.current = false;
-      return undefined;
-    }
+    if (!open) return undefined;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     if (window.history.state?.__uiOverlay !== token) {
@@ -23,7 +20,7 @@ export default function Sheet({ open, title, onClose, children, footer, header }
     }
     historyAdded.current = true;
     function onKeyDown(event) {
-      if (event.key === "Escape") requestClose();
+      if (event.key === "Escape" && window.history.state?.__uiOverlay === token) requestClose();
     }
     function onPopState(event) {
       if (event.state?.__uiOverlay === token) return;

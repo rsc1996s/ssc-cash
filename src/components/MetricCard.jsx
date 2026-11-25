@@ -28,19 +28,19 @@ const TONE_STYLES = {
   },
 };
 
-export default function MetricCard({ label, value, icon: Icon, tone = "neutral", sublabel }) {
+export default function MetricCard({ label, value, icon: Icon, tone = "neutral", sublabel, compact = false }) {
   const s = TONE_STYLES[tone] || TONE_STYLES.neutral;
   return (
-    <Card className={`p-4 sm:p-5 ${s.card}`}>
-      <div className="flex items-center justify-between mb-3">
+    <Card className={`${compact ? "p-3" : "p-4 sm:p-5"} ${s.card}`}>
+      <div className={`flex items-center justify-between gap-2 ${compact ? "mb-1" : "mb-3"}`}>
         <div className={`text-sm ${s.label}`}>{label}</div>
         {Icon && (
-          <span className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${s.iconWrap}`}>
-            <Icon size={18} strokeWidth={2} />
+          <span className={`${compact ? "h-7 w-7" : "h-9 w-9"} rounded-full flex items-center justify-center shrink-0 ${s.iconWrap}`}>
+            <Icon size={compact ? 15 : 18} strokeWidth={2} />
           </span>
         )}
       </div>
-      <div className={`font-nums text-2xl font-semibold leading-tight sm:text-3xl ${s.value}`}>{value}</div>
+      <div className={`break-words font-nums font-semibold leading-tight ${compact ? "text-lg sm:text-xl" : "text-2xl sm:text-3xl"} ${s.value}`}>{value}</div>
       {sublabel && <div className={`mt-1 text-xs ${s.label}`}>{sublabel}</div>}
     </Card>
   );

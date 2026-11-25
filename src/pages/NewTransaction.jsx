@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { collection, addDoc, serverTimestamp, onSnapshot, query, orderBy } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
 import Layout from "../components/Layout";
@@ -12,8 +12,12 @@ import FormHeader from "../components/ui/FormHeader";
 import { useFeedback } from "../components/ui/FeedbackProvider";
 import SearchPicker from "../components/ui/SearchPicker";
 import { formatDate } from "../lib/format";
+import { evidenceSizeValid } from "../lib/evidence";
+import useReceiptPhotos from "../components/useReceiptPhotos";
+import ReceiptPhotoFields from "../components/ReceiptPhotoFields";
+import useScopedCashData from "../hooks/useScopedCashData";
+import useCategories from "../hooks/useCategories";
 
-const MAX_RECEIPT_PHOTOS = 3;
 const TOTAL_PHOTO_KB_WARNING = 700;
 
 function localDateString(date = new Date()) {
@@ -41,9 +45,10 @@ export default function NewTransaction() {
   const navigate = useNavigate();
   const { confirm, toast } = useFeedback();
   const [form, setForm] = useState(emptyForm);
-  const [funds, setFunds] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [receiptPhotos, setReceiptPhotos] = useState([]); // [{ dataUrl, kb }]
+  const { funds, loading: fundsLoading, error: fundsError } = useScopedCashData();
+  const { categories, error: categoriesError } = useCategories();
+  const receipt = useReceiptPhotos();
+  const receiptPhotos = receipt.photos;
   const [changePhoto, setChangePhoto] = useState(null);
   const [compressing, setCompressing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -56,19 +61,8 @@ export default function NewTransaction() {
   }, []);
 
   useEffect(() => {
-    const unsub = onSnapshot(query(collection(db, "funds"), orderBy("createdAt", "asc")), (snap) => {
-      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      setFunds(list);
-      setForm((f) => (f.fundId ? f : { ...f, fundId: list[0]?.id || "" }));
-    });
-    const unsub2 = onSnapshot(collection(db, "cashCategories"), (snap) => {
-      setCategories(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-    });
-    return () => {
-      unsub();
-      unsub2();
-    };
-  }, []);
+    if (!fundsLoading) setForm((f) => funds.some((fund) => fund.id === f.fundId) ? f : { ...f, fundId: funds[0]?.id || "" });
+  }, [funds, fundsLoading]);
 
   function update(field, value) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -89,29 +83,6 @@ export default function NewTransaction() {
       danger: true,
     })) return;
     navigate("/");
-  }
-
-  async function addReceiptPhoto(file) {
-    if (!file) return;
-    if (receiptPhotos.length >= MAX_RECEIPT_PHOTOS) {
-      setError(`แนบรูปหลักฐานได้สูงสุด ${MAX_RECEIPT_PHOTOS} รูปต่อรายการ`);
-      return;
-    }
-    setCompressing(true);
-    setError("");
-    try {
-      const dataUrl = await fileToCompressedDataUrl(file);
-      setReceiptPhotos((ps) => [...ps, { dataUrl, kb: approxKb(dataUrl) }]);
-    } catch (err) {
-      console.error(err);
-      setError("อ่านไฟล์รูปไม่สำเร็จ ลองเลือกรูปใหม่อีกครั้ง");
-    } finally {
-      setCompressing(false);
-    }
-  }
-
-  function removeReceiptPhoto(idx) {
-    setReceiptPhotos((ps) => ps.filter((_, i) => i !== idx));
   }
 
   async function handleChangePhotoSelect(file) {
@@ -137,7 +108,7 @@ export default function NewTransaction() {
     e.preventDefault();
     setError("");
 
-    if (!form.fundId) {
+    if (!form.fundId || !funds.some((fund) => fund.id === form.fundId)) {
       setError("กรุณาเลือกฝั่งเงินหมุนเวียน");
       document.getElementById("transaction-fund-choice")?.focus();
       return;
@@ -157,9 +128,8 @@ export default function NewTransaction() {
       document.getElementById("transaction-description")?.focus();
       return;
     }
-    if (receiptPhotos.length === 0) {
-      setError("กรุณาแนบรูปหลักฐาน (สลิป/ใบเสร็จ) อย่างน้อย 1 รูป เพื่อความโปร่งใส");
-      document.querySelector('input[aria-label="ถ่ายหรือเลือกรูปหลักฐาน"]')?.focus();
+    if (!evidenceSizeValid(receiptPhotos.map((photo) => photo.dataUrl), changePhoto?.dataUrl)) {
+      setError("รูปมีขนาดรวมเกินกำหนด กรุณาลดจำนวนหรือขนาดรูป");
       return;
     }
 
@@ -179,7 +149,7 @@ export default function NewTransaction() {
         paymentMethod: form.paymentMethod,
         category: form.category || "",
         note: form.note.trim(),
-        receiptPhotoURL: receiptPhotos[0].dataUrl, // เก็บรูปแรกไว้ในฟิลด์เดิมด้วย เพื่อให้ของเก่ายังใช้ได้
+        receiptPhotoURL: receiptPhotos[0]?.dataUrl || null,
         receiptPhotoURLs: receiptPhotos.map((p) => p.dataUrl),
         changePhotoURL: changePhoto?.dataUrl || null,
         status: "pending",
@@ -207,9 +177,10 @@ export default function NewTransaction() {
   return (
     <Layout>
       <Card className="mx-auto max-w-lg p-4 sm:p-6">
-        {funds.length === 0 && (
+        {fundsError && <p role="alert" className="mb-4 text-sm text-danger">โหลดงบไม่สำเร็จ กรุณาตรวจสอบสิทธิ์และการเชื่อมต่อ</p>}
+        {!fundsLoading && !fundsError && funds.length === 0 && (
           <p className="mb-4 rounded-lg bg-warning-light px-3 py-2 text-sm text-warning">
-            ยังไม่มีงบค่าใช้จ่าย ให้เจ้าของร้านสร้างงบค่าใช้จ่ายก่อน
+            {profile?.role === "owner" ? "ยังไม่มีงบค่าใช้จ่าย ให้เจ้าของร้านสร้างงบค่าใช้จ่ายก่อน" : "ยังไม่ได้รับมอบหมายงบ ติดต่อแอดมิน"}
           </p>
         )}
 
@@ -218,9 +189,10 @@ export default function NewTransaction() {
             title="บันทึกรายการใหม่"
             onCancel={cancelForm}
             formId="new-transaction-form"
-            saving={busy || compressing}
-            savingLabel={compressing ? "กำลังจัดการรูป..." : "กำลังบันทึก..."}
-            saveDisabled={funds.length === 0}
+            saving={busy || compressing || receipt.compressing}
+            savingLabel={compressing || receipt.compressing ? "กำลังจัดการรูป..." : "กำลังบันทึก..."}
+            saveDisabled={fundsLoading || Boolean(fundsError) || funds.length === 0}
+            hideSave={!fundsLoading && !fundsError && funds.length === 0}
             saveLabel="บันทึก"
           />
           <fieldset>
@@ -338,43 +310,8 @@ export default function NewTransaction() {
           </div>
 
           <div>
-            <label className="mb-2 block text-sm font-semibold">
-              รูปหลักฐาน <span className="text-red-600">จำเป็นอย่างน้อย 1 รูป</span>
-            </label>
-            {receiptPhotos.length > 0 && (
-              <div className="mb-2 grid grid-cols-3 gap-2">
-                {receiptPhotos.map((photo, index) => (
-                  <div key={index} className="relative min-w-0">
-                    <img src={photo.dataUrl} alt={`หลักฐาน ${index + 1}`} className="h-24 w-full rounded-lg border border-paperLine object-cover" />
-                    <button
-                      type="button"
-                      aria-label={`ลบรูปหลักฐาน ${index + 1}`}
-                      onClick={() => removeReceiptPhoto(index)}
-                      className="absolute right-1 top-1 flex h-8 w-8 items-center justify-center rounded-full border border-paperLine bg-white text-red-600"
-                    >
-                      ×
-                    </button>
-                    <div className="mt-1 text-center text-xs text-inkSoft">~{photo.kb} KB</div>
-                  </div>
-                ))}
-              </div>
-            )}
-            {receiptPhotos.length < MAX_RECEIPT_PHOTOS && (
-              <input
-                type="file"
-                accept="image/*"
-                capture="environment"
-                aria-label="ถ่ายหรือเลือกรูปหลักฐาน"
-                onChange={(e) => {
-                  addReceiptPhoto(e.target.files?.[0] || null);
-                  e.target.value = "";
-                }}
-                className="w-full rounded-lg border border-paperLine bg-blue-50 p-3 text-sm"
-              />
-            )}
-            <p className="mt-1 text-xs text-inkSoft">
-              แนบได้สูงสุด {MAX_RECEIPT_PHOTOS} รูป ({receiptPhotos.length}/{MAX_RECEIPT_PHOTOS})
-            </p>
+            <p className="mb-2 block text-sm font-semibold">แนบหลักฐาน (ไม่บังคับ — ผู้ตรวจสอบอาจขอดูภายหลัง)</p>
+            <ReceiptPhotoFields {...receipt} />
           </div>
 
           <details className="rounded-xl border border-paperLine bg-blue-50/60 p-4">
@@ -457,6 +394,7 @@ export default function NewTransaction() {
               รูปที่แนบมีขนาดรวมค่อนข้างใหญ่ (~{totalPhotoKb} KB) หากบันทึกไม่สำเร็จ ลองลดจำนวนรูป
             </p>
           )}
+          {categoriesError && <p className="text-sm text-red-600" role="alert">{categoriesError}</p>}
           {error && <p className="text-sm text-red-600" role="alert">{error}</p>}
 
         </form>

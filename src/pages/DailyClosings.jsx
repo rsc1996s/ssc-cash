@@ -14,6 +14,7 @@ import { ClipboardCheck } from "lucide-react";
 import FormHeader from "../components/ui/FormHeader";
 import { useFeedback } from "../components/ui/FeedbackProvider";
 import SearchPicker from "../components/ui/SearchPicker";
+import useScopedCashData from "../hooks/useScopedCashData";
 
 function bangkokDateNow() {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -33,9 +34,8 @@ function closingKey(closing) {
 export default function DailyClosings() {
   const { user, isOwner } = useAuth();
   const { confirm, toast } = useFeedback();
-  const [funds, setFunds] = useState([]);
+  const { funds, loading: loadingFunds, error: fundsError } = useScopedCashData();
   const [closings, setClosings] = useState([]);
-  const [loadingFunds, setLoadingFunds] = useState(true);
   const [loadingClosings, setLoadingClosings] = useState(isOwner);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -48,22 +48,12 @@ export default function DailyClosings() {
   const [visibleCount, setVisibleCount] = useState(10);
 
   useEffect(() => {
-    const unsubscribe = onSnapshot(
-      collection(db, "funds"),
-      (snapshot) => {
-        const list = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
-        setFunds(list);
-        setFundId((current) => current || list[0]?.id || "");
-        setLoadingFunds(false);
-      },
-      (loadError) => {
-        console.error("โหลดงบค่าใช้จ่ายสำหรับปิดยอดไม่สำเร็จ:", loadError);
-        setError("โหลดงบค่าใช้จ่ายไม่สำเร็จ กรุณาตรวจสอบการเชื่อมต่อและสิทธิ์");
-        setLoadingFunds(false);
-      }
-    );
-    return () => unsubscribe();
-  }, []);
+    if (!loadingFunds) setFundId((current) => funds.some((fund) => fund.id === current) ? current : funds[0]?.id || "");
+  }, [funds, loadingFunds]);
+
+  useEffect(() => {
+    if (fundsError) setError("โหลดงบค่าใช้จ่ายไม่สำเร็จ กรุณาตรวจสอบการเชื่อมต่อและสิทธิ์");
+  }, [fundsError]);
 
   useEffect(() => {
     if (!isOwner) return undefined;
@@ -98,7 +88,7 @@ export default function DailyClosings() {
     setError("");
     setVariance(null);
     setResult(null);
-    if (!fundId) {
+    if (!fundId || !funds.some((fund) => fund.id === fundId)) {
       setError("กรุณาเลือกงบค่าใช้จ่าย");
       return;
     }

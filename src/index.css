@@ -32,7 +32,6 @@
 }
 
 .aurora-sidebar,
-.aurora-mobile-nav,
 .aurora-auth-card {
   background: rgb(255 255 255 / 90%);
   box-shadow: 0 12px 40px rgb(23 43 77 / 10%);
@@ -40,7 +39,6 @@
 
 @supports (backdrop-filter: blur(16px)) or (-webkit-backdrop-filter: blur(16px)) {
   .aurora-sidebar,
-  .aurora-mobile-nav,
   .aurora-auth-card {
     background: rgb(255 255 255 / 80%);
     -webkit-backdrop-filter: blur(16px);
@@ -220,7 +218,6 @@ button {
 
 @media (prefers-reduced-transparency: reduce) {
   .aurora-sidebar,
-  .aurora-mobile-nav,
   .aurora-auth-card {
     background: white;
     -webkit-backdrop-filter: none;

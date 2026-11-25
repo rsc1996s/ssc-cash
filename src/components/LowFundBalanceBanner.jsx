@@ -1,6 +1,5 @@
-import { useEffect, useState } from "react";
-import { collection, query, where, onSnapshot } from "firebase/firestore";
-import { db } from "../firebase";
+import { useAuth } from "../context/AuthContext";
+import useScopedCashData from "../hooks/useScopedCashData";
 import { formatBaht } from "../lib/format";
 import { currentFundBalance } from "../lib/ledger";
 
@@ -8,26 +7,10 @@ import { currentFundBalance } from "../lib/ledger";
 const LOW_BALANCE_RATIO = 0.2;
 
 export default function LowFundBalanceBanner() {
-  const [funds, setFunds] = useState([]);
-  const [topups, setTopups] = useState([]);
-  const [approvedTx, setApprovedTx] = useState([]);
+  const { funds, topups, transactions: approvedTx, error } = useScopedCashData();
+  const { isOwner } = useAuth();
 
-  useEffect(() => {
-    const unsub1 = onSnapshot(collection(db, "funds"), (snap) =>
-      setFunds(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
-    );
-    const unsub2 = onSnapshot(collection(db, "fundTopups"), (snap) =>
-      setTopups(snap.docs.map((d) => d.data()))
-    );
-    const unsub3 = onSnapshot(query(collection(db, "transactions"), where("status", "==", "approved")), (snap) =>
-      setApprovedTx(snap.docs.map((d) => d.data()))
-    );
-    return () => {
-      unsub1();
-      unsub2();
-      unsub3();
-    };
-  }, []);
+  if (error) return <p role="alert" className="mb-4 text-sm text-danger">โหลดข้อมูลงบไม่สำเร็จ กรุณาตรวจสอบสิทธิ์และการเชื่อมต่อ</p>;
 
   const lowFunds = funds
     .map((f) => ({ ...f, balance: currentFundBalance(f, topups, approvedTx) }))
@@ -37,7 +20,7 @@ export default function LowFundBalanceBanner() {
 
   return (
     <div role="status" className="mb-6 rounded-xl border border-warning/50 bg-warning-light px-4 py-3 text-sm text-warning">
-      <div className="mb-1 font-semibold">เงินหมุนเวียนใกล้หมด</div>
+      <div className="mb-1 font-semibold">เงินหมุนเวียนใกล้หมด{!isOwner && " · งบที่คุณดูแล"}</div>
       <ul className="space-y-0.5">
         {lowFunds.map((f) => (
           <li key={f.id}>

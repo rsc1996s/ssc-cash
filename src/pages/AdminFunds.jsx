@@ -1,13 +1,10 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   collection,
-  onSnapshot,
   addDoc,
   updateDoc,
   doc,
   serverTimestamp,
-  orderBy,
-  query,
   writeBatch,
 } from "firebase/firestore";
 import { db } from "../firebase";
@@ -24,13 +21,12 @@ import SegmentedTabs from "../components/ui/SegmentedTabs";
 import PageHeader from "../components/ui/PageHeader";
 import Card from "../components/ui/Card";
 import Input from "../components/ui/Input";
+import useScopedCashData from "../hooks/useScopedCashData";
 
 export default function AdminFunds() {
   const { user, profile } = useAuth();
   const { confirm, toast } = useFeedback();
-  const [funds, setFunds] = useState([]);
-  const [topups, setTopups] = useState([]);
-  const [transactions, setTransactions] = useState([]);
+  const { funds, topups, transactions, error: loadError } = useScopedCashData();
 
   const [newFund, setNewFund] = useState({ label: "", openingBalance: "" });
   const [topupDraft, setTopupDraft] = useState({}); // { [fundId]: {amount, note} }
@@ -40,23 +36,6 @@ export default function AdminFunds() {
   const [error, setError] = useState("");
   const [section, setSection] = useState("funds");
   const [topupFundId, setTopupFundId] = useState(null);
-
-  useEffect(() => {
-    const unsub1 = onSnapshot(query(collection(db, "funds"), orderBy("createdAt", "asc")), (s) =>
-      setFunds(s.docs.map((d) => ({ id: d.id, ...d.data() })))
-    );
-    const unsub2 = onSnapshot(collection(db, "fundTopups"), (s) =>
-      setTopups(s.docs.map((d) => ({ id: d.id, ...d.data() })))
-    );
-    const unsub3 = onSnapshot(collection(db, "transactions"), (s) =>
-      setTransactions(s.docs.map((d) => ({ id: d.id, ...d.data() })))
-    );
-    return () => {
-      unsub1();
-      unsub2();
-      unsub3();
-    };
-  }, []);
 
   async function createFund(e) {
     e.preventDefault();
@@ -222,6 +201,7 @@ export default function AdminFunds() {
   return (
     <Layout>
       <PageHeader title="งบค่าใช้จ่ายหมุนเวียน" fallbackTo="/" />
+      {loadError && <p role="alert" className="mb-4 text-sm text-danger">โหลดข้อมูลงบไม่สำเร็จ กรุณาตรวจสอบสิทธิ์และการเชื่อมต่อ</p>}
       <SegmentedTabs
         value={section}
         onChange={setSection}

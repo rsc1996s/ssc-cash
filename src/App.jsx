@@ -5,6 +5,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import FeedbackProvider from "./components/ui/FeedbackProvider";
 import Loading from "./components/ui/Loading";
 import PageTransition from "./components/PageTransition";
+import { ScopedCashDataProvider } from "./hooks/useScopedCashData";
 
 const Login = lazy(() => import("./pages/Login"));
 const Register = lazy(() => import("./pages/Register"));
@@ -33,6 +34,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <ScopedCashDataProvider>
         <FeedbackProvider>
           <PageTransition>
           <Suspense fallback={<div className="mx-auto max-w-6xl px-4"><Loading /></div>}>
@@ -224,6 +226,7 @@ export default function App() {
           </Suspense>
           </PageTransition>
         </FeedbackProvider>
+        </ScopedCashDataProvider>
       </AuthProvider>
     </BrowserRouter>
   );

@@ -20,6 +20,7 @@ export function formatDate(ts) {
 
 export const STATUS_LABEL = {
   pending: "รอตรวจสอบ",
+  needs_evidence: "รอหลักฐาน",
   approved: "อนุมัติแล้ว",
   rejected: "ตีกลับ",
   voided: "ยกเลิกรายการ",

@@ -9,6 +9,7 @@ export default function FormHeader({
   saveLabel = "บันทึก",
   cancelLabel = "ยกเลิก",
   saveDisabled = false,
+  hideSave = false,
   formId,
 }) {
   return (
@@ -17,14 +18,14 @@ export default function FormHeader({
         {cancelLabel}
       </Button>
       <h1 className="min-w-0 flex-1 truncate text-center text-base font-semibold sm:text-lg">{title}</h1>
-      <Button
+      {!hideSave && <Button
         type="button"
         onClick={formId ? () => document.getElementById(formId)?.requestSubmit() : onSave}
         disabled={saving || saveDisabled}
         className="min-h-11 shrink-0 px-3 sm:px-4"
       >
         {saving ? savingLabel : saveLabel}
-      </Button>
+      </Button>}
     </header>
   );
 }

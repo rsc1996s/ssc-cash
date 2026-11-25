@@ -26,9 +26,10 @@ import Sheet from "../components/ui/Sheet";
 import FormHeader from "../components/ui/FormHeader";
 import { useFeedback } from "../components/ui/FeedbackProvider";
 import PageHeader from "../components/ui/PageHeader";
-import SegmentedTabs from "../components/ui/SegmentedTabs";
 import Input from "../components/ui/Input";
 import SearchPicker from "../components/ui/SearchPicker";
+import { normalizeSearchText } from "../components/ui/searchText";
+import useScopedCashData from "../hooks/useScopedCashData";
 
 const ROLE_OPTIONS = [
   { value: "staff", label: "พนักงาน" },
@@ -36,13 +37,16 @@ const ROLE_OPTIONS = [
   { value: "owner", label: "เจ้าของ/ผู้จัดการ" },
 ];
 
-function AddEmployeeForm({ open, onClose }) {
+function AddEmployeeForm({ open, onClose, funds, fundsLoading, fundsError }) {
   const { user } = useAuth();
   const { confirm, toast } = useFeedback();
   const [step, setStep] = useState(1); // 1: ชื่อ+บทบาท, 2: ตั้ง PIN, 3: ยืนยัน PIN
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
   const [role, setRole] = useState("staff");
+  const [fundIds, setFundIds] = useState([]);
+  const [fundsChosen, setFundsChosen] = useState(false);
+  const [roleLabel, setRoleLabel] = useState("");
   const [pin, setPin] = useState("");
   const [pinConfirm, setPinConfirm] = useState("");
   const [error, setError] = useState("");
@@ -56,6 +60,10 @@ function AddEmployeeForm({ open, onClose }) {
     }
     if (!USERNAME_PATTERN.test(normalizeUsername(username))) {
       setError("ชื่อผู้ใช้ต้องเป็นภาษาอังกฤษ/ตัวเลข 3-24 ตัว และขึ้นต้นด้วยตัวอักษร");
+      return;
+    }
+    if (role !== "owner" && (!fundsChosen || fundsLoading || fundsError)) {
+      setError("กรุณาเลือกงบที่ดูแล หรือกดล้างเพื่อระบุว่าไม่เห็นงบใด");
       return;
     }
     setError("");
@@ -102,7 +110,7 @@ function AddEmployeeForm({ open, onClose }) {
         targetCollection: "users",
         targetId: newUid,
         before: null,
-        after: { role, disabled: false },
+        after: role === "owner" ? { role, disabled: false } : { role, disabled: false, fundIds, roleLabel },
       });
       const batch = writeBatch(db);
       batch.set(doc(db, "users", newUid), {
@@ -113,6 +121,7 @@ function AddEmployeeForm({ open, onClose }) {
         createdAt: serverTimestamp(),
         createdByOwner: user.uid,
         auditLogId: audit.ref.id,
+        ...(role === "owner" ? {} : { fundIds, roleLabel }),
       });
       batch.set(usernameRef, { uid: newUid, email });
       queueAuditEvent(batch, audit);
@@ -130,6 +139,9 @@ function AddEmployeeForm({ open, onClose }) {
       setStep(1);
       setName("");
       setUsername("");
+      setFundIds([]);
+      setFundsChosen(false);
+      setRoleLabel("");
       setPin("");
       setPinConfirm("");
       onClose(true);
@@ -155,7 +167,7 @@ function AddEmployeeForm({ open, onClose }) {
   }
 
   async function cancelForm() {
-    if ((name || username || pin || pinConfirm) && !await confirm({
+    if ((name || username || pin || pinConfirm || fundsChosen || roleLabel) && !await confirm({
       title: "ยกเลิกการเพิ่มผู้ใช้",
       description: "ข้อมูลผู้ใช้ที่กรอกไว้แต่ยังไม่ได้บันทึกจะหายไป",
       confirmLabel: "ทิ้งข้อมูล",
@@ -166,6 +178,9 @@ function AddEmployeeForm({ open, onClose }) {
     setName("");
     setUsername("");
     setRole("staff");
+    setFundIds([]);
+    setFundsChosen(false);
+    setRoleLabel("");
     setPin("");
     setPinConfirm("");
     setError("");
@@ -234,6 +249,24 @@ function AddEmployeeForm({ open, onClose }) {
                 </button>
               ))}
             </div>
+            {role !== "owner" && (
+              <>
+                <div>
+                  <label className="text-sm text-inkSoft block mb-1">งบที่ดูแล (ต้องเลือกให้ชัดเจน)</label>
+                  <SearchPicker multiple maxSelected={30} value={fundIds}
+                    onChange={(ids) => { setFundIds(ids); setFundsChosen(true); }}
+                    options={funds.map((fund) => ({ value: fund.id, label: fund.label }))}
+                    disabled={fundsLoading || Boolean(fundsError)}
+                    ariaLabel="เลือกงบที่ดูแล" placeholder="เลือกงบ หรือกดล้างหากไม่ให้เห็นงบใด" />
+                  {fundsChosen && fundIds.length === 0 && <p className="mt-1 text-xs text-inkSoft">ไม่เห็นงบใด</p>}
+                  {fundsError && <p role="alert" className="text-sm text-danger">โหลดรายชื่องบไม่สำเร็จ</p>}
+                </div>
+                <div>
+                  <label className="text-sm text-inkSoft block mb-1">ชื่อบทบาท (ไม่บังคับ)</label>
+                  <Input value={roleLabel} maxLength={100} onChange={(event) => setRoleLabel(event.target.value)} />
+                </div>
+              </>
+            )}
           </div>
           {error && <p className="text-sm text-danger">{error}</p>}
         </form>
@@ -285,7 +318,9 @@ function AddEmployeeForm({ open, onClose }) {
 }
 
 export default function AdminUsers() {
-  const { user } = useAuth();
+  const { user, profile: currentProfile } = useAuth();
+  const { confirm, toast } = useFeedback();
+  const { funds, loading: fundsLoading, error: fundsError } = useScopedCashData();
   const [users, setUsers] = useState([]);
   const [setup, setSetup] = useState(null);
   const [usernameDrafts, setUsernameDrafts] = useState({});
@@ -294,7 +329,16 @@ export default function AdminUsers() {
   const [busy, setBusy] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [userSection, setUserSection] = useState("pending");
+  const [listOpen, setListOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [migrationOpen, setMigrationOpen] = useState(false);
+  const [migrationSearch, setMigrationSearch] = useState("");
   const [visibleCount, setVisibleCount] = useState(10);
+  const [accessUser, setAccessUser] = useState(null);
+  const [accessFunds, setAccessFunds] = useState([]);
+  const [accessChosen, setAccessChosen] = useState(false);
+  const [accessLabel, setAccessLabel] = useState("");
+  const [accessBusy, setAccessBusy] = useState(false);
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "users"), (snap) => {
@@ -448,8 +492,82 @@ export default function AdminUsers() {
     return changeUser(profile.id, { disabled }, disabled ? "user-disabled" : "user-enabled");
   }
 
-  const pending = users.filter((u) => u.role === "pending");
-  const approved = users.filter((u) => u.role !== "pending");
+  function openAccess(target) {
+    setAccessUser(target);
+    setAccessFunds(Array.isArray(target.fundIds) ? target.fundIds : []);
+    setAccessChosen(Array.isArray(target.fundIds));
+    setAccessLabel(target.roleLabel || "");
+    setPageError("");
+  }
+
+  async function cancelAccess() {
+    if (accessBusy || !accessUser) return;
+    const oldFunds = Array.isArray(accessUser.fundIds) ? accessUser.fundIds : [];
+    const changed = accessChosen !== Array.isArray(accessUser.fundIds) ||
+      JSON.stringify(accessFunds) !== JSON.stringify(oldFunds) ||
+      accessLabel !== (accessUser.roleLabel || "");
+    if (changed && !await confirm({
+      title: "ยกเลิกการกำหนดงบ",
+      description: "ข้อมูลที่ยังไม่ได้บันทึกจะหายไป",
+      confirmLabel: "ทิ้งข้อมูล",
+      cancelLabel: "ทำต่อ",
+      danger: true,
+    })) return;
+    setPageError("");
+    setAccessUser(null);
+  }
+
+  async function saveAccess() {
+    if (!accessUser || !accessChosen || fundsLoading || fundsError) {
+      setPageError("กรุณาเลือกงบที่ดูแล หรือกดล้างเพื่อระบุว่าไม่เห็นงบใด");
+      return;
+    }
+    const oldIds = Array.isArray(accessUser.fundIds) ? accessUser.fundIds : funds.map((fund) => fund.id);
+    const nameFor = (id) => funds.find((fund) => fund.id === id)?.label || id;
+    const added = accessFunds.filter((id) => !oldIds.includes(id)).map(nameFor);
+    const removed = oldIds.filter((id) => !accessFunds.includes(id)).map(nameFor);
+    const before = { fundIds: accessUser.fundIds ?? null, roleLabel: accessUser.roleLabel ?? null };
+    const after = { fundIds: accessFunds, roleLabel: accessLabel };
+    if (JSON.stringify(before) === JSON.stringify(after)) {
+      setAccessUser(null);
+      return;
+    }
+    if (!await confirm({
+      title: `ยืนยันสิทธิ์ของ ${accessUser.name || accessUser.id}`,
+      description: `เพิ่ม: ${added.join(", ") || "ไม่มี"} · เลิกดู: ${removed.join(", ") || "ไม่มี"} · ชื่อบทบาท: ${accessLabel || "ไม่ระบุ"}`,
+      confirmLabel: "บันทึกสิทธิ์",
+      cancelLabel: "กลับไปแก้ไข",
+    })) return;
+    setAccessBusy(true);
+    setPageError("");
+    try {
+      const audit = newAuditEvent({
+        actorUid: user.uid,
+        actorName: currentProfile?.name || user.displayName || "",
+        action: "user-access-changed",
+        targetCollection: "users",
+        targetId: accessUser.id,
+        before,
+        after,
+      });
+      const batch = writeBatch(db);
+      batch.update(doc(db, "users", accessUser.id), { ...after, auditLogId: audit.ref.id });
+      queueAuditEvent(batch, audit);
+      await batch.commit();
+      toast("บันทึกงบที่ดูแลแล้ว");
+      setAccessUser(null);
+    } catch (error) {
+      console.error("บันทึกสิทธิ์งบไม่สำเร็จ:", error);
+      setPageError("บันทึกสิทธิ์งบไม่สำเร็จ กรุณาตรวจสอบสิทธิ์และลองใหม่");
+    } finally {
+      setAccessBusy(false);
+    }
+  }
+
+  const matchesSearch = (u) => normalizeSearchText(`${u.name || ""} ${u.username || ""}`).includes(normalizeSearchText(search));
+  const pending = users.filter((u) => u.role === "pending" && matchesSearch(u));
+  const approved = users.filter((u) =>
+    (userSection === "owners" ? u.role === "owner" : ["staff", "guest"].includes(u.role)) && matchesSearch(u));
 
   return (
     <Layout>
@@ -471,6 +589,14 @@ export default function AdminUsers() {
       </p>
 
       {migrationMode && (
+        <button type="button" onClick={() => setMigrationOpen(true)} className="mb-4 flex min-h-14 w-full items-center justify-between rounded-lg border border-warning/40 bg-warning-light px-4 text-left">
+          <span>ย้ายบัญชีไปใช้ชื่อผู้ใช้</span><span>›</span>
+        </button>
+      )}
+      <Sheet open={Boolean(migrationMode) && migrationOpen} title="ย้ายบัญชีไปใช้ชื่อผู้ใช้" onClose={() => setMigrationOpen(false)}>
+      <Input value={migrationSearch} onChange={(event) => setMigrationSearch(event.target.value)} placeholder="ค้นหาผู้ใช้" aria-label="ค้นหาผู้ใช้ที่ต้องย้าย" className="mb-4 w-full" />
+      {pageError && <p role="alert" className="mb-3 text-sm text-danger">{pageError}</p>}
+      {migrationMode && (
         <section className="bg-warning-light border border-warning/40 rounded-lg p-4 mb-6">
           <h2 className="font-medium mb-1">ย้ายบัญชีไปใช้ชื่อผู้ใช้</h2>
           <p className="text-sm text-inkSoft mb-3">
@@ -486,7 +612,8 @@ export default function AdminUsers() {
             </button>
           )}
           <div className="space-y-2">
-            {users.filter((profile) => !profile.username || profile.pin).map((profile) => (
+            {users.filter((profile) => (!profile.username || profile.pin) &&
+              normalizeSearchText(`${profile.name || ""} ${profile.username || ""}`).includes(normalizeSearchText(migrationSearch))).map((profile) => (
               <div key={profile.id} className="flex flex-wrap items-center gap-2">
                 <span className="text-sm flex-1 min-w-32">{profile.name || profile.id}</span>
                 <Input
@@ -515,32 +642,36 @@ export default function AdminUsers() {
           </button>
         </section>
       )}
+      </Sheet>
 
       {pageError && <p className="text-sm text-danger mb-3">{pageError}</p>}
 
       {setup?.loginMode === "username" && (
         <AddEmployeeForm
           open={showAddForm}
+          funds={funds}
+          fundsLoading={fundsLoading}
+          fundsError={fundsError}
           onClose={() => {
             setShowAddForm(false);
           }}
         />
       )}
 
-      <SegmentedTabs
-        value={userSection}
-        onChange={(value) => {
-          setUserSection(value);
-          setVisibleCount(10);
-        }}
-        ariaLabel="รายชื่อผู้ใช้"
-        className="mb-4"
-        options={[
-          { value: "pending", label: `รออนุมัติ (${pending.length})` },
-          { value: "users", label: `ผู้ใช้งาน (${approved.length})` },
-        ]}
-      />
-
+      <div className="space-y-2">
+        {[
+          { value: "pending", label: "รออนุมัติ", count: users.filter((u) => u.role === "pending").length },
+          { value: "staff", label: "พนักงานและผู้อ่าน", count: users.filter((u) => ["staff", "guest"].includes(u.role)).length },
+          { value: "owners", label: "แอดมิน", count: users.filter((u) => u.role === "owner").length },
+        ].map((group) => (
+          <button key={group.value} type="button" className="flex min-h-14 w-full items-center justify-between rounded-lg border border-paperLine bg-white px-4 text-left"
+            onClick={() => { setUserSection(group.value); setSearch(""); setVisibleCount(10); setListOpen(true); }}>
+            <span>{group.label}</span><span className="text-sm text-inkSoft">{group.count} คน ›</span>
+          </button>
+        ))}
+      </div>
+      <Sheet open={listOpen} title={userSection === "pending" ? "รออนุมัติ" : userSection === "owners" ? "แอดมิน" : "พนักงานและผู้อ่าน"} onClose={() => setListOpen(false)}>
+      <Input value={search} onChange={(event) => { setSearch(event.target.value); setVisibleCount(10); }} placeholder="ค้นหาชื่อหรือชื่อผู้ใช้" aria-label="ค้นหาผู้ใช้" className="mb-4 w-full" />
       {userSection === "pending" && pending.length > 0 && (
         <div className="mb-6">
           <div className="space-y-2">
@@ -599,7 +730,8 @@ export default function AdminUsers() {
         </p>
       )}
 
-      {userSection === "users" && <div className="space-y-2">
+      {userSection !== "pending" && <div className="space-y-2">
+        {approved.length === 0 && <p className="text-sm text-inkSoft">ไม่พบผู้ใช้งาน</p>}
         {approved.slice(0, visibleCount).map((u) => (
           <div
             key={u.id}
@@ -608,8 +740,20 @@ export default function AdminUsers() {
             <div className="min-w-0">
               <div className="font-medium">{u.name}</div>
               <div className="text-xs text-inkSoft">{u.username || "ยังไม่มีชื่อผู้ใช้"}</div>
+              {["staff", "guest"].includes(u.role) && (
+                <div className="mt-1 text-xs text-inkSoft">
+                  งบที่ดูแล: {!Object.hasOwn(u, "fundIds") ? "ยังไม่ได้กำหนด (ทุกงบ)" :
+                    Array.isArray(u.fundIds) ? (u.fundIds.map((id) => funds.find((fund) => fund.id === id)?.label || id).join(", ") || "ไม่มีงบ") : "ข้อมูลไม่ถูกต้อง"}
+                  {u.roleLabel && ` · ${u.roleLabel}`}
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-2">
+              {["staff", "guest"].includes(u.role) && u.id !== user.uid && (
+                <button type="button" onClick={() => openAccess(u)} className="min-h-11 rounded-lg border border-paperLine px-3 text-sm">
+                  กำหนดงบ
+                </button>
+              )}
               <SearchPicker
                 ariaLabel={`บทบาท ${u.name}`}
                 value={u.role}
@@ -636,6 +780,24 @@ export default function AdminUsers() {
           </button>
         )}
       </div>}
+      </Sheet>
+      <Sheet open={Boolean(accessUser)} title="กำหนดงบที่ดูแล" onClose={cancelAccess}
+        header={<FormHeader title="กำหนดงบที่ดูแล" onCancel={cancelAccess} onSave={saveAccess} saving={accessBusy} />}>
+        <div className="space-y-4">
+          <p className="font-medium">{accessUser?.name || accessUser?.id}</p>
+          {accessUser && !Object.hasOwn(accessUser, "fundIds") && <p className="text-sm text-inkSoft">ปัจจุบัน: ยังไม่ได้กำหนด (ทุกงบ)</p>}
+          <SearchPicker multiple maxSelected={30} value={accessFunds}
+            onChange={(ids) => { setAccessFunds(ids); setAccessChosen(true); }}
+            options={funds.map((fund) => ({ value: fund.id, label: fund.label }))}
+            disabled={fundsLoading || Boolean(fundsError)} ariaLabel="งบที่ดูแล"
+            placeholder="เลือกงบ หรือกดล้างหากไม่ให้เห็นงบใด" />
+          {accessChosen && accessFunds.length === 0 && <p className="text-sm text-inkSoft">ไม่เห็นงบใด</p>}
+          <label className="block text-sm text-inkSoft">ชื่อบทบาท (ไม่บังคับ)
+            <Input value={accessLabel} maxLength={100} onChange={(event) => setAccessLabel(event.target.value)} />
+          </label>
+          {pageError && <p role="alert" className="text-sm text-danger">{pageError}</p>}
+        </div>
+      </Sheet>
     </Layout>
   );
 }

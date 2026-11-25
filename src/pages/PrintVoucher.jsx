@@ -2,20 +2,40 @@ import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase";
-import { formatBaht, formatDateTime, TYPE_LABEL, PAYMENT_LABEL } from "../lib/format";
+import { formatBaht, formatDateTime, TYPE_LABEL, PAYMENT_LABEL, STATUS_LABEL } from "../lib/format";
+import { evidencePhotos } from "../lib/evidence";
+import { useAuth } from "../context/AuthContext";
+import { canViewFund } from "../lib/fundAccess";
 
 export default function PrintVoucher() {
   const { id } = useParams();
+  const { profile } = useAuth();
   const [tx, setTx] = useState(null);
+  const [loadError, setLoadError] = useState("");
+  const accessKey = JSON.stringify([profile?.role, profile?.disabled, profile && Object.hasOwn(profile, "fundIds"), profile?.fundIds]);
 
   useEffect(() => {
+    setTx(null);
+    setLoadError("");
     const unsub = onSnapshot(doc(db, "transactions", id), (snap) => {
-      if (snap.exists()) setTx({ id: snap.id, ...snap.data() });
+      if (snap.exists()) {
+        setTx({ id: snap.id, ...snap.data() });
+        setLoadError("");
+      }
+      else setLoadError("ไม่พบรายการนี้");
+    }, (error) => {
+      console.error("โหลดใบเบิกไม่สำเร็จ:", error);
+      setTx(null);
+      setLoadError("ไม่สามารถดูรายการนี้ได้ กรุณาตรวจสอบสิทธิ์และการเชื่อมต่อ");
     });
     return () => unsub();
-  }, [id]);
+  }, [id, accessKey]);
 
-  if (!tx) {
+  if (loadError || (tx && !canViewFund(profile, tx.fundId))) {
+    return <p role="alert" className="p-6 text-sm text-danger">{loadError || "คุณไม่ได้รับมอบหมายงบของรายการนี้"}</p>;
+  }
+
+  if (!tx || tx.id !== id) {
     return <p className="p-6 text-sm text-inkSoft">กำลังโหลด...</p>;
   }
 
@@ -97,6 +117,10 @@ export default function PrintVoucher() {
             <tr className="border-b border-paperLine">
               <td className="py-2 text-inkSoft">ช่องทางชำระเงิน</td>
               <td className="py-2 text-right">{PAYMENT_LABEL[tx.paymentMethod]}</td>
+            </tr>
+            <tr className="border-b border-paperLine">
+              <td className="py-2 text-inkSoft">สถานะ / จำนวนหลักฐาน</td>
+              <td className="py-2 text-right">{STATUS_LABEL[tx.status] || tx.status} · {evidencePhotos(tx).length} รูป</td>
             </tr>
             <tr className="border-b border-paperLine">
               <td className="py-2 text-inkSoft">ผู้บันทึกรายการ</td>

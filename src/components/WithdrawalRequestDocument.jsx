@@ -1,5 +1,5 @@
 import { formatBaht, formatDate, formatDateTime } from "../lib/format";
-import { lineTotal, transferredAgainst } from "../lib/transfers";
+import { lineTotal, remainingBalance, transferredAgainst } from "../lib/transfers";
 import { ORGANIZATION } from "../config/org";
 import { withdrawalReportRows } from "./withdrawalReportData";
 
@@ -20,7 +20,7 @@ export default function WithdrawalRequestDocument({
   const lines = request.lines || [];
   const total = request.totalAmount ?? lineTotal(lines);
   const paid = isOwner ? transferredAgainst(request.id, payments) : 0;
-  const remaining = total - paid;
+  const remaining = remainingBalance(request, payments);
   const hasChanges = changedAfterCreate(request);
   const reportRows = withdrawalReportRows(lines, groupByCategory);
   const lineRow = (line, index) => (
@@ -43,7 +43,8 @@ export default function WithdrawalRequestDocument({
           </div>
         </div>
         <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2">
-          <p><span className="text-inkSoft">บัญชีต้นทาง:</span> {request.sourceAccountLabel}</p>
+          {request.originAccountLabel && <p><span className="text-inkSoft">บัญชีต้นทาง:</span> {request.originAccountLabel}</p>}
+          <p><span className="text-inkSoft">บัญชีผู้ทำรายการ:</span> {request.sourceAccountLabel}</p>
           <p><span className="text-inkSoft">เลขที่ใบเบิก:</span> <span className="font-nums">{request.requestNo}</span></p>
           <p><span className="text-inkSoft">วันที่:</span> {formatDate(request.date)}</p>
           <p><span className="text-inkSoft">ผู้เสนอ:</span> {request.createdByName || "-"}</p>
@@ -83,7 +84,7 @@ export default function WithdrawalRequestDocument({
         {isOwner && (
           <>
             <p>ยอดโอนจ่ายแล้ว <span className="ml-3 font-nums">{formatBaht(paid)} บาท</span></p>
-            <p className="font-semibold">คงเหลือ <span className="ml-3 font-nums">{formatBaht(remaining)} บาท</span></p>
+            <p className="font-semibold">คงเหลือ <span className="ml-3 font-nums">{remaining === null ? "ยังไม่ได้ระบุยอดรับจริง" : `${formatBaht(remaining)} บาท`}</span></p>
           </>
         )}
       </div>

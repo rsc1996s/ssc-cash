@@ -23,7 +23,7 @@ const settingsItems = [
   {
     to: "/settings/bank-accounts",
     label: "บัญชีธนาคาร",
-    description: "จัดการบัญชีต้นทางและบัญชีผู้รับ",
+    description: "จัดการบัญชีต้นทาง ผู้ทำรายการ และปลายทาง",
     icon: Landmark,
   },
   {

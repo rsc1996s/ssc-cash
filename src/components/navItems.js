@@ -10,7 +10,7 @@ import {
 
 export function getNavItems({ isOwner, isGuest, isStaff, pendingTxCount = 0, pendingUserCount = 0 }) {
   return [
-    { to: "/", icon: Receipt, label: isGuest ? "รายการทั้งหมด" : "รายการของฉัน", show: true },
+    { to: "/", icon: Receipt, label: "หน้าหลัก", show: true },
     {
       to: "/transfers",
       icon: FileText,

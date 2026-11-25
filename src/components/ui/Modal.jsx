@@ -11,10 +11,7 @@ export default function Modal({ open, title, onClose, children, footer }) {
   openRef.current = open;
 
   useEffect(() => {
-    if (!open) {
-      historyAdded.current = false;
-      return undefined;
-    }
+    if (!open) return undefined;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     if (window.history.state?.__uiOverlay !== token) {
@@ -22,7 +19,7 @@ export default function Modal({ open, title, onClose, children, footer }) {
     }
     historyAdded.current = true;
     function onKeyDown(event) {
-      if (event.key === "Escape") onCloseRef.current();
+      if (event.key === "Escape" && window.history.state?.__uiOverlay === token) onCloseRef.current();
     }
     function onPopState(event) {
       if (event.state?.__uiOverlay === token) return;

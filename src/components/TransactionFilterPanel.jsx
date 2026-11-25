@@ -27,6 +27,7 @@ export default function TransactionFilterPanel({
   showStatus = true,
   statusOptions = Object.entries(STATUS_LABEL).map(([value, label]) => ({ value, label })),
   onExport,
+  showTotals = true,
 }) {
   const [open, setOpen] = useState(false);
   const hasFilters = filters.search || filters.datePreset !== "all" ||
@@ -148,12 +149,12 @@ export default function TransactionFilterPanel({
         </div>
       </Sheet>
 
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-paperLine pt-3 text-sm">
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-paperLine pt-2 text-sm">
         <span className="text-inkSoft">พบ {count} รายการ</span>
-        <div className="flex gap-4 font-semibold">
+        {showTotals && <div className="flex gap-4 font-semibold">
           <span className="text-green-800">รับ {totals.income.toLocaleString("th-TH", { minimumFractionDigits: 2 })}</span>
           <span className="text-red-700">จ่าย {totals.expense.toLocaleString("th-TH", { minimumFractionDigits: 2 })}</span>
-        </div>
+        </div>}
       </div>
     </section>
   );

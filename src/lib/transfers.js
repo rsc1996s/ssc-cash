@@ -9,10 +9,10 @@ export function transferredAgainst(withdrawalRequestId, allTransferPayments) {
     .reduce((sum, p) => sum + lineTotal(p.lines), 0);
 }
 
-/** ยอดคงเหลือของใบเบิก = ยอดเบิกทั้งหมด - ยอดที่โอนจ่ายตัดไปแล้ว */
+/** ใบเบิกที่ยังไม่ระบุยอดรับจริงไม่สามารถคำนวณยอดคงเหลือได้ */
 export function remainingBalance(withdrawalRequest, allTransferPayments) {
-  const total = withdrawalRequest.totalAmount ?? lineTotal(withdrawalRequest.lines);
-  return total - transferredAgainst(withdrawalRequest.id, allTransferPayments);
+  if (typeof withdrawalRequest.receivedAmount !== "number" || !Number.isFinite(withdrawalRequest.receivedAmount)) return null;
+  return withdrawalRequest.receivedAmount - transferredAgainst(withdrawalRequest.id, allTransferPayments);
 }
 
 export function nextLineNo(lines) {
