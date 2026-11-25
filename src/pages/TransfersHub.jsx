@@ -95,7 +95,7 @@ export default function TransfersHub() {
                                 remain <= 0 ? "text-primary" : "text-warning"
                               }`}
                             >
-                              {remain <= 0 ? "ตัดยอดครบแล้ว" : `คงเหลือ ${formatBaht(remain)}`}
+                              {remain === null ? "ยังไม่ได้ระบุยอดรับจริง" : `คงเหลือ ${formatBaht(remain)}`}
                             </div>
                           )}
                         </div>

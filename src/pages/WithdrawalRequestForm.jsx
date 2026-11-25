@@ -9,8 +9,6 @@ import {
   getDoc,
   serverTimestamp,
   writeBatch,
-  query,
-  where,
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
@@ -29,6 +27,7 @@ import SearchPicker from "../components/ui/SearchPicker";
 import Sheet from "../components/ui/Sheet";
 import WithdrawalRequestDocument from "../components/WithdrawalRequestDocument";
 import Button from "../components/ui/Button";
+import useCategories from "../hooks/useCategories";
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
@@ -52,14 +51,17 @@ export default function WithdrawalRequestForm() {
   const { confirm, toast } = useFeedback();
 
   const [sourceAccounts, setSourceAccounts] = useState([]);
-  const [categories, setCategories] = useState([]);
+  const [originAccounts, setOriginAccounts] = useState([]);
+  const { categories, error: categoriesError, loading: categoriesLoading } = useCategories();
   const [requestNo, setRequestNo] = useState(null);
   const [createdBy, setCreatedBy] = useState(null);
   const [createdByName, setCreatedByName] = useState("");
   const [createdAt, setCreatedAt] = useState(null);
   const [updatedAt, setUpdatedAt] = useState(null);
   const [originalTotal, setOriginalTotal] = useState(0);
+  const [receivedAmount, setReceivedAmount] = useState(null);
   const [sourceAccountId, setSourceAccountId] = useState("");
+  const [originAccountId, setOriginAccountId] = useState("");
   const [date, setDate] = useState(todayStr());
   const [note, setNote] = useState("");
   const [lines, setLines] = useState([emptyLine(1)]);
@@ -67,8 +69,6 @@ export default function WithdrawalRequestForm() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [dirty, setDirty] = useState(false);
-  const [previousRequests, setPreviousRequests] = useState([]);
-  const [copySourceId, setCopySourceId] = useState("");
   const [transferPayments, setTransferPayments] = useState([]);
   const [paymentsLoaded, setPaymentsLoaded] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -85,32 +85,14 @@ export default function WithdrawalRequestForm() {
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "bankAccounts"), (snap) => {
-      setSourceAccounts(snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((a) => a.side === "source"));
-    });
-    const unsub2 = onSnapshot(collection(db, "transferCategories"), (snap) => {
-      setCategories(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      const accounts = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setSourceAccounts(accounts.filter((a) => a.side === "source"));
+      setOriginAccounts(accounts.filter((a) => a.side === "origin"));
     });
     return () => {
       unsub();
-      unsub2();
     };
   }, []);
-
-  useEffect(() => {
-    if (!isNew) return undefined;
-    const requestsQuery = isOwner
-      ? collection(db, "withdrawalRequests")
-      : query(collection(db, "withdrawalRequests"), where("createdBy", "==", user.uid));
-    const unsubscribe = onSnapshot(
-      requestsQuery,
-      (snapshot) => setPreviousRequests(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))),
-      (loadError) => {
-        console.error("โหลดใบเบิกก่อนหน้าไม่สำเร็จ:", loadError);
-        setError("โหลดใบเบิกก่อนหน้าไม่สำเร็จ กรุณาตรวจสอบสิทธิ์และการเชื่อมต่อ");
-      }
-    );
-    return () => unsubscribe();
-  }, [isNew, isOwner, user.uid]);
 
   useEffect(() => {
     if (!isOwner) {
@@ -145,7 +127,9 @@ export default function WithdrawalRequestForm() {
       setCreatedAt(d.createdAt || null);
       setUpdatedAt(d.updatedAt || null);
       setOriginalTotal(d.totalAmount ?? lineTotal(d.lines));
+      setReceivedAmount(d.receivedAmount ?? null);
       setSourceAccountId(d.sourceAccountId);
+      setOriginAccountId(d.originAccountId || "");
       setDate(d.date);
       setNote(d.note || "");
       setLines(d.lines && d.lines.length ? d.lines : [emptyLine(1)]);
@@ -202,6 +186,10 @@ export default function WithdrawalRequestForm() {
   }
 
   async function selectOrAddCategory(value, index, closePicker, onSelect = (next) => updateLine(index, "categoryLabel", next)) {
+    if (categoriesLoading || categoriesError) {
+      setError("ยังโหลดหมวดหมู่ไม่ครบ กรุณาลองอีกครั้ง");
+      return;
+    }
     const label = value.trim();
     if (!label) return;
     const existing = categories.find((category) =>
@@ -219,7 +207,7 @@ export default function WithdrawalRequestForm() {
       return;
     }
     try {
-      await addDoc(collection(db, "transferCategories"), {
+      await addDoc(collection(db, "cashCategories"), {
         label,
         createdAt: serverTimestamp(),
       });
@@ -269,9 +257,15 @@ export default function WithdrawalRequestForm() {
   async function handleSave() {
     setError("");
     const account = sourceAccounts.find((a) => a.id === sourceAccountId);
+    const origin = originAccounts.find((a) => a.id === originAccountId);
     if (!account) {
-      setError("กรุณาเลือกบัญชี A (บัญชีต้นทาง)");
+      setError("กรุณาเลือกบัญชีผู้ทำรายการ");
       document.getElementById("withdrawal-source-account")?.focus();
+      return;
+    }
+    if (isNew && !origin) {
+      setError("กรุณาเลือกบัญชีต้นทาง");
+      document.getElementById("withdrawal-origin-account")?.focus();
       return;
     }
     const cleanLines = lines
@@ -300,11 +294,11 @@ export default function WithdrawalRequestForm() {
       const linked = transferPayments.filter((payment) => payment.linkedWithdrawalRequestId === id);
       if (linked.length > 0) {
         const paid = transferredAgainst(id, transferPayments);
-        const remaining = newTotal - paid;
-        const lowerThanPaid = newTotal < paid;
+        const remaining = receivedAmount === null ? null : receivedAmount - paid;
+        const lowerThanPaid = remaining !== null && remaining < 0;
         const confirmed = await confirm({
           title: "ยืนยันแก้ไขใบเบิกที่มีการโอนจ่าย",
-          description: `ยอดโอนจ่ายแล้ว ${formatBaht(paid)} บาท\nยอดรวมเดิม ${formatBaht(originalTotal)} บาท → ใหม่ ${formatBaht(newTotal)} บาท\nคงเหลือใหม่ ${formatBaht(remaining)} บาท${lowerThanPaid ? "\n\nคำเตือน: ยอดรวมใหม่ต่ำกว่ายอดที่โอนจ่ายแล้ว ยอดคงเหลือจะติดลบ แต่ยังสามารถบันทึกได้" : ""}`,
+          description: `ยอดโอนจ่ายแล้ว ${formatBaht(paid)} บาท\nยอดขอเบิกเดิม ${formatBaht(originalTotal)} บาท → ใหม่ ${formatBaht(newTotal)} บาท\nคงเหลือจากยอดรับจริง ${remaining === null ? "ยังไม่ได้ระบุยอดรับจริง" : `${formatBaht(remaining)} บาท`}${lowerThanPaid ? "\n\nคำเตือน: ยอดคงเหลือติดลบ" : ""}`,
           confirmLabel: "ยืนยันการแก้ไข",
           danger: lowerThanPaid,
         });
@@ -315,12 +309,17 @@ export default function WithdrawalRequestForm() {
     setBusy(true);
     try {
       const sourceAccountLabel = `${account.bankName} · ${account.accountNumber} (${account.accountName})`;
+      const originFields = origin ? {
+        originAccountId: origin.id,
+        originAccountLabel: `${origin.bankName} · ${origin.accountNumber} (${origin.accountName})`,
+      } : {};
       if (isNew) {
         const genNo = await nextDocNumber("withdrawalRequests", "WR");
         await addDoc(collection(db, "withdrawalRequests"), {
           requestNo: genNo,
           sourceAccountId,
           sourceAccountLabel,
+          ...originFields,
           date,
           note: note.trim(),
           lines: cleanLines,
@@ -334,6 +333,7 @@ export default function WithdrawalRequestForm() {
         await updateDoc(doc(db, "withdrawalRequests", id), {
           sourceAccountId,
           sourceAccountLabel,
+          ...originFields,
           date,
           note: note.trim(),
           lines: cleanLines,
@@ -416,10 +416,12 @@ export default function WithdrawalRequestForm() {
     sourceAccountLabel: sourceAccount
       ? `${sourceAccount.bankName} · ${sourceAccount.accountNumber} (${sourceAccount.accountName})`
       : "",
+    originAccountLabel: originAccounts.find((account) => account.id === originAccountId)?.accountName || "",
     date,
     note,
     lines: lines.map((line, index) => ({ ...line, lineNo: index + 1 })),
     totalAmount: total,
+    receivedAmount,
     createdAt,
     updatedAt,
     createdByName: createdByName || profile?.name || "",
@@ -427,28 +429,6 @@ export default function WithdrawalRequestForm() {
   const isModified = timestampValue(updatedAt) !== null &&
     timestampValue(createdAt) !== null &&
     Math.abs(timestampValue(updatedAt) - timestampValue(createdAt)) > 1000;
-  const previousRequestOptions = [...previousRequests]
-    .sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0))
-    .map((request) => ({
-      value: request.id,
-      label: request.requestNo || request.id,
-      sublabel: `${request.date || ""} · ${formatBaht(request.totalAmount ?? lineTotal(request.lines))} บาท`,
-      searchText: `${request.requestNo || ""} ${request.date || ""} ${request.totalAmount ?? lineTotal(request.lines)}`,
-    }));
-
-  function copyPreviousRequest(requestId) {
-    const request = previousRequests.find((item) => item.id === requestId);
-    if (!request) return;
-    setLines(renumberLines((request.lines || []).map((line, index) => ({
-      lineNo: index + 1,
-      categoryLabel: line.categoryLabel || "",
-      description: line.description || "",
-      amount: "",
-    }))));
-    setCopySourceId(requestId);
-    setDirty(true);
-  }
-
   return (
     <Layout>
       <div className="mx-auto max-w-4xl rounded-xl border border-paperLine bg-white p-4 shadow-sm sm:p-6">
@@ -491,18 +471,6 @@ export default function WithdrawalRequestForm() {
         )}
 
         <div className="mb-4 flex flex-wrap items-end gap-3">
-          {isNew && (
-            <label className="min-w-0 flex-1 text-sm font-medium">
-              คัดลอกจากใบเบิกก่อนหน้า
-              <SearchPicker
-                value={copySourceId}
-                onChange={copyPreviousRequest}
-                options={previousRequestOptions}
-                placeholder="เลือกใบเบิกเพื่อคัดลอกรายการ"
-                ariaLabel="ใบเบิกก่อนหน้า"
-              />
-            </label>
-          )}
           {!isNew && (
             <Button
               variant="secondary"
@@ -521,10 +489,23 @@ export default function WithdrawalRequestForm() {
           <div>
             <label className="mb-1 block text-sm font-medium">บัญชีต้นทาง</label>
             <AccountSearchPicker
+              id="withdrawal-origin-account"
+              side="origin"
+              accounts={originAccounts}
+              ariaLabel="บัญชีต้นทาง"
+              value={originAccountId}
+              onChange={(value) => { setDirty(true); setOriginAccountId(value); }}
+              disabled={!canEdit}
+              placeholder="— เลือกบัญชีต้นทาง —"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium">บัญชีผู้ทำรายการ (รับเงินเบิก)</label>
+            <AccountSearchPicker
               id="withdrawal-source-account"
               side="source"
               accounts={sourceAccounts}
-              ariaLabel="บัญชีต้นทาง"
+              ariaLabel="บัญชีผู้ทำรายการ"
               value={sourceAccountId}
               onChange={(value) => {
                 setDirty(true);
@@ -535,7 +516,7 @@ export default function WithdrawalRequestForm() {
             />
             {sourceAccounts.length === 0 && (
               <p className="text-xs text-warning mt-1">
-                ยังไม่มีบัญชีต้นทางในคลัง — กรุณาติดต่อเจ้าของร้านให้เพิ่มบัญชีก่อน
+                ยังไม่มีบัญชีผู้ทำรายการในคลัง — กรุณาติดต่อเจ้าของร้านให้เพิ่มบัญชีก่อน
               </p>
             )}
           </div>
@@ -666,6 +647,7 @@ export default function WithdrawalRequestForm() {
           </div>
         </div>
 
+        {categoriesError && <p role="alert" className="text-sm text-danger mb-3">{categoriesError}</p>}
         {error && <p className="text-sm text-danger mb-3">{error}</p>}
 
         {canEdit && (

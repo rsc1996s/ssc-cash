@@ -14,6 +14,11 @@ import { useFeedback } from "../components/ui/FeedbackProvider";
 import SegmentedTabs from "../components/ui/SegmentedTabs";
 import Input from "../components/ui/Input";
 import Textarea from "../components/ui/Textarea";
+import SearchPicker from "../components/ui/SearchPicker";
+import ReceiptPhotoFields from "../components/ReceiptPhotoFields";
+import useReceiptPhotos from "../components/useReceiptPhotos";
+import { canRequestEvidence, canSubmitEvidence, evidencePhotos, evidenceSizeValid } from "../lib/evidence";
+import { canViewFund } from "../lib/fundAccess";
 
 const EDITABLE_FIELDS = [
   { key: "amount", label: "จำนวนเงิน", type: "number" },
@@ -26,10 +31,11 @@ const EDITABLE_FIELDS = [
 
 export default function TransactionDetail() {
   const { id } = useParams();
-  const { user, isOwner, profile } = useAuth();
+  const { user, isOwner, isStaff, profile } = useAuth();
   const navigate = useNavigate();
   const { confirm, toast } = useFeedback();
   const [tx, setTx] = useState(null);
+  const [loadError, setLoadError] = useState("");
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({});
   const [reason, setReason] = useState("");
@@ -39,15 +45,36 @@ export default function TransactionDetail() {
   const [showSignFlow, setShowSignFlow] = useState(false);
   const [signatureDataUrl, setSignatureDataUrl] = useState(null);
   const [detailTab, setDetailTab] = useState("details");
+  const [requestOpen, setRequestOpen] = useState(false);
+  const [submitOpen, setSubmitOpen] = useState(false);
+  const [requestType, setRequestType] = useState("ขอสลิป/ใบเสร็จ");
+  const [requestText, setRequestText] = useState("");
+  const [evidenceError, setEvidenceError] = useState("");
+  const receipt = useReceiptPhotos();
+  const accessKey = JSON.stringify([profile?.role, profile?.disabled, profile && Object.hasOwn(profile, "fundIds"), profile?.fundIds]);
 
   useEffect(() => {
+    setTx(null);
+    setLoadError("");
     const unsub = onSnapshot(doc(db, "transactions", id), (snap) => {
-      if (snap.exists()) setTx({ id: snap.id, ...snap.data() });
+      if (snap.exists()) {
+        setTx({ id: snap.id, ...snap.data() });
+        setLoadError("");
+      }
+      else setLoadError("ไม่พบรายการนี้");
+    }, (loadError) => {
+      console.error("โหลดรายละเอียดรายการไม่สำเร็จ:", loadError);
+      setTx(null);
+      setLoadError("ไม่สามารถดูรายการนี้ได้ กรุณาตรวจสอบสิทธิ์และการเชื่อมต่อ");
     });
     return () => unsub();
-  }, [id]);
+  }, [id, accessKey]);
 
-  if (!tx) {
+  if (loadError || (tx && !canViewFund(profile, tx.fundId))) {
+    return <Layout><p role="alert" className="text-sm text-danger">{loadError || "คุณไม่ได้รับมอบหมายงบของรายการนี้"}</p></Layout>;
+  }
+
+  if (!tx || tx.id !== id) {
     return (
       <Layout>
         <p className="text-sm text-inkSoft">กำลังโหลด...</p>
@@ -56,6 +83,91 @@ export default function TransactionDetail() {
   }
 
   const canEdit = isOwner || (tx.createdBy === user.uid && tx.status === "pending");
+  const photos = evidencePhotos(tx);
+
+  async function evidenceTransition(action, updates, message) {
+    setBusy(true);
+    setEvidenceError("");
+    setError("");
+    try {
+      const status = action === "transaction-evidence-requested" ? "needs_evidence" : "pending";
+      const audit = newAuditEvent({
+        actorUid: user.uid,
+        actorName: profile?.name || user.email,
+        action,
+        targetCollection: "transactions",
+        targetId: id,
+        before: { status: tx.status },
+        after: { status },
+      });
+      const batch = writeBatch(db);
+      batch.update(doc(db, "transactions", id), {
+        ...updates, status, updatedAt: serverTimestamp(), auditLogId: audit.ref.id,
+      });
+      queueAuditEvent(batch, audit);
+      await batch.commit();
+      setRequestOpen(false);
+      setSubmitOpen(false);
+      setRequestText("");
+      receipt.resetPhotos();
+      toast(message);
+    } catch (err) {
+      console.error("บันทึกสถานะหลักฐานไม่สำเร็จ:", err);
+      setEvidenceError("บันทึกไม่สำเร็จ กรุณาตรวจสอบการเชื่อมต่อและลองใหม่");
+      setError("บันทึกสถานะหลักฐานไม่สำเร็จ กรุณาลองใหม่");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function requestEvidence() {
+    const text = requestText.trim();
+    const note = `${requestType}: ${text}`;
+    if (!text || note.length > 2000) {
+      setEvidenceError("กรุณาระบุข้อความคำขอ โดยมีความยาวรวมไม่เกิน 2,000 ตัวอักษร");
+      document.getElementById("evidence-request-note")?.focus();
+      return;
+    }
+    return evidenceTransition("transaction-evidence-requested", {
+      evidenceRequestedBy: user.uid,
+      evidenceRequestedByName: profile?.name || user.email || "",
+      evidenceRequestedAt: serverTimestamp(),
+      evidenceRequestNote: note,
+    }, "ส่งคำขอหลักฐานแล้ว");
+  }
+
+  function submitEvidence() {
+    const urls = receipt.photos.map((photo) => photo.dataUrl);
+    if (!urls.length) {
+      setEvidenceError("กรุณาแนบหลักฐานอย่างน้อย 1 รูป");
+      return;
+    }
+    if (!evidenceSizeValid(urls, tx.changePhotoURL, tx.approvalSignatureURL)) {
+      setEvidenceError("รูปมีขนาดรวมเกินกำหนด กรุณาลดจำนวนหรือขนาดรูป");
+      return;
+    }
+    return evidenceTransition("transaction-evidence-submitted", {
+      receiptPhotoURL: urls[0], receiptPhotoURLs: urls, evidenceSubmittedAt: serverTimestamp(),
+    }, "ส่งหลักฐานแล้ว รอผู้ตรวจสอบพิจารณา");
+  }
+
+  async function cancelEvidenceRequest() {
+    if (!await confirm({ title: "ไม่ต้องใช้หลักฐานแล้ว", description: "รายการจะกลับไปรอตรวจสอบ", confirmLabel: "ยืนยัน" })) return;
+    await evidenceTransition("transaction-evidence-request-cancelled", {}, "ยกเลิกคำขอหลักฐานแล้ว");
+  }
+
+  async function closeEvidenceSheet() {
+    if (busy || receipt.compressing) return;
+    if ((receipt.photos.length || requestText.trim()) && !await confirm({
+      title: "ยกเลิกการดำเนินการ", description: "ข้อมูลที่ยังไม่ได้ส่งจะหายไป",
+      confirmLabel: "ทิ้งข้อมูล", cancelLabel: "ทำต่อ", danger: true,
+    })) return;
+    setRequestOpen(false);
+    setSubmitOpen(false);
+    setRequestText("");
+    setEvidenceError("");
+    receipt.resetPhotos();
+  }
 
   function startEdit() {
     setDraft({
@@ -249,6 +361,21 @@ export default function TransactionDetail() {
           <StatusBadge status={tx.status} />
         </div>
 
+        {isOwner && photos.length === 0 && (
+          <p className="mb-4 rounded-lg bg-warning-light p-3 text-sm font-semibold text-warning">ไม่มีหลักฐานแนบ</p>
+        )}
+        {tx.evidenceRequestNote && (
+          <div className="mb-4 rounded-lg border border-warning/40 bg-warning-light p-3 text-sm text-warning">
+            <p className="font-semibold">{tx.status === "needs_evidence" ? "ผู้ตรวจสอบขอหลักฐาน" : "คำขอหลักฐานล่าสุด"}</p>
+            <p className="break-words">{tx.evidenceRequestNote}</p>
+            <p>ขอเมื่อ {formatDateTime(tx.evidenceRequestedAt)} โดย {tx.evidenceRequestedByName || "-"}</p>
+            {tx.evidenceSubmittedAt && tx.status !== "needs_evidence" && <p>ส่งหลักฐานเมื่อ {formatDateTime(tx.evidenceSubmittedAt)}</p>}
+            {canSubmitEvidence(tx, user.uid, isOwner || isStaff) && (
+              <button type="button" onClick={() => { setEvidenceError(""); setSubmitOpen(true); }} className="mt-3 min-h-11 rounded-lg bg-primary px-4 font-semibold text-white">แนบหลักฐาน</button>
+            )}
+          </div>
+        )}
+
         {!editing ? (
           <dl className="grid grid-cols-2 gap-y-2 text-sm mb-4">
             <dt className="text-inkSoft">จำนวนเงิน</dt>
@@ -365,7 +492,7 @@ export default function TransactionDetail() {
           </button>
         )}
 
-        {isOwner && tx.status === "pending" && !editing && (
+        {isOwner && ["pending", "needs_evidence"].includes(tx.status) && !editing && (
           <div className="mt-5 pt-5 border-t border-paperLine">
             <label className="text-sm text-inkSoft block mb-1">หมายเหตุการตรวจสอบ (ถ้ามี)</label>
             <Textarea
@@ -381,11 +508,17 @@ export default function TransactionDetail() {
             <div className="flex gap-2 flex-wrap">
               <button
                 onClick={() => setShowSignFlow(true)}
-                disabled={busy}
-                className="bg-primary text-white rounded px-4 py-2 text-sm font-medium"
+                disabled={busy || tx.status !== "pending"}
+                className="bg-primary text-white rounded px-4 py-2 text-sm font-medium disabled:opacity-50"
               >
                 อนุมัติ (เซ็นยืนยัน)
               </button>
+              {canRequestEvidence(tx, user.uid, isOwner) && (
+                <button type="button" onClick={() => { setEvidenceError(""); setRequestOpen(true); }} disabled={busy} className="rounded border border-warning px-4 py-2 text-sm text-warning">ขอหลักฐาน</button>
+              )}
+              {tx.status === "needs_evidence" && (
+                <button type="button" onClick={cancelEvidenceRequest} disabled={busy} className="rounded border border-paperLine px-4 py-2 text-sm">ไม่ต้องใช้หลักฐานแล้ว</button>
+              )}
               <button
                 onClick={() => review("rejected")}
                 disabled={busy}
@@ -401,8 +534,10 @@ export default function TransactionDetail() {
                 ยกเลิกรายการ
               </button>
             </div>
+            {tx.status === "needs_evidence" && <p className="mt-2 text-sm text-warning">อนุมัติไม่ได้ระหว่างรอหลักฐาน กรุณารอผู้สร้างส่งหลักฐานหรือยกเลิกคำขอ</p>}
           </div>
         )}
+        {!editing && error && <p role="alert" className="mt-3 text-sm text-danger">{error}</p>}
 
         {tx.status === "approved" && (
           <div className="mt-5 pt-5 border-t border-paperLine">
@@ -457,6 +592,35 @@ export default function TransactionDetail() {
         </div>
       )}
 
+      <Sheet
+        open={requestOpen}
+        title="ขอหลักฐาน"
+        onClose={closeEvidenceSheet}
+        header={<FormHeader title="ขอหลักฐาน" onCancel={closeEvidenceSheet} onSave={requestEvidence} saving={busy} saveLabel="ส่งคำขอ" />}
+      >
+        <div className="space-y-3">
+          <label className="block text-sm font-medium">ประเภทหลักฐาน
+            <SearchPicker value={requestType} onChange={setRequestType} ariaLabel="ประเภทหลักฐาน" options={[
+              { value: "ขอสลิป/ใบเสร็จ", label: "ขอสลิป/ใบเสร็จ" },
+              { value: "ขอรูปสินค้า/งาน", label: "ขอรูปสินค้า/งาน" },
+              { value: "อื่น ๆ", label: "อื่น ๆ" },
+            ]} />
+          </label>
+          <label htmlFor="evidence-request-note" className="block text-sm font-medium">ข้อความคำขอ (จำเป็น)</label>
+          <Textarea id="evidence-request-note" value={requestText} maxLength={1980} onChange={(event) => setRequestText(event.target.value)} />
+          {evidenceError && <p role="alert" className="text-sm text-danger">{evidenceError}</p>}
+        </div>
+      </Sheet>
+      <Sheet
+        open={submitOpen}
+        title="แนบหลักฐาน"
+        onClose={closeEvidenceSheet}
+        header={<FormHeader title="แนบหลักฐาน" onCancel={closeEvidenceSheet} onSave={submitEvidence} saving={busy || receipt.compressing} saveLabel="ส่งหลักฐาน" />}
+      >
+        <p className="mb-3 text-sm text-inkSoft">แนบรูป 1–3 รูป แล้วส่งกลับให้ผู้ตรวจสอบ</p>
+        <ReceiptPhotoFields {...receipt} />
+        {evidenceError && <p role="alert" className="mt-3 text-sm text-danger">{evidenceError}</p>}
+      </Sheet>
       <Sheet
         open={showSignFlow}
         title="อนุมัติด้วยลายเซ็น"

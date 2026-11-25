@@ -1,7 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { collection, query, where, orderBy, onSnapshot } from "firebase/firestore";
-import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
 import Layout from "../components/Layout";
 import StatusBadge from "../components/ui/StatusBadge";
@@ -11,7 +9,8 @@ import LowFundBalanceBanner from "../components/LowFundBalanceBanner";
 import MetricCard from "../components/MetricCard";
 import SectionTitle from "../components/ui/SectionTitle";
 import Card from "../components/ui/Card";
-import { formatBaht, formatDateTime, PAYMENT_LABEL } from "../lib/format";
+import { formatBaht, formatDateTime, PAYMENT_LABEL, STATUS_LABEL } from "../lib/format";
+import { evidencePhotos } from "../lib/evidence";
 import {
   ArrowUpRight,
   ArrowDownRight,
@@ -22,74 +21,76 @@ import {
 import TransactionFilterPanel from "../components/TransactionFilterPanel";
 import useTransactionFilters from "../components/useTransactionFilters";
 import { downloadCsv } from "../components/csvExport";
+import useScopedCashData from "../hooks/useScopedCashData";
+import Loading from "../components/ui/Loading";
+import CashFlowChart from "../components/CashFlowChart";
 
 export default function StaffDashboard() {
   const { user } = useAuth();
-  const [rows, setRows] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(null);
+  const { transactions, loading, error, empty } = useScopedCashData();
+  const rows = useMemo(() => transactions.filter((row) => row.createdBy === user?.uid)
+    .sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0)), [transactions, user?.uid]);
+  const indexUrl = error?.message?.match(/https:\/\/console\.firebase\.google\.com\/[^\s]+/)?.[0]?.replace(/[).,]+$/, "");
+  const loadError = error ? {
+    message: "โหลดรายการไม่สำเร็จ กรุณาตรวจสอบการเชื่อมต่อและสิทธิ์ Firestore",
+    indexUrl,
+    needsIndex: error.code === "failed-precondition",
+  } : null;
   const [visibleCount, setVisibleCount] = useState(10);
-
-  useEffect(() => {
-    if (!user) return;
-    const q = query(
-      collection(db, "transactions"),
-      where("createdBy", "==", user.uid),
-      orderBy("createdAt", "desc")
-    );
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        setRows(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-        setLoadError(null);
-        setLoading(false);
-      },
-      (error) => {
-        console.error("โหลดรายการธุรกรรมไม่สำเร็จ:", error);
-        const indexUrl = error.message.match(
-          /https:\/\/console\.firebase\.google\.com\/[^\s]+/
-        )?.[0]?.replace(/[).,]+$/, "");
-        setLoadError({
-          message: "โหลดรายการไม่สำเร็จ กรุณาตรวจสอบการเชื่อมต่อและสิทธิ์ Firestore",
-          indexUrl,
-          needsIndex: error.code === "failed-precondition",
-        });
-        setLoading(false);
-      }
-    );
-    return () => unsub();
-  }, [user]);
 
   const { filters, updateFilter, clearFilters, filtered, categories, authors, totals } =
     useTransactionFilters(rows);
   const exportRows = () => downloadCsv("รายการของฉัน.csv",
-    ["วันที่", "รายละเอียด", "หมวดหมู่", "ประเภท", "จำนวนเงิน", "สถานะ", "ผู้บันทึก", "งบค่าใช้จ่าย", "ช่องทาง"],
+    ["วันที่", "รายละเอียด", "หมวดหมู่", "ประเภท", "จำนวนเงิน", "สถานะ", "จำนวนหลักฐาน", "ผู้บันทึก", "งบค่าใช้จ่าย", "ช่องทาง"],
     filtered.map((row) => [
       formatDateTime(row.createdAt),
       row.itemDescription,
       row.category,
       row.type === "income" ? "รายรับ" : "รายจ่าย",
       Number(row.amount) || 0,
-      row.status,
+      STATUS_LABEL[row.status] || row.status,
+      evidencePhotos(row).length,
       row.createdByName,
       row.fundLabel,
       PAYMENT_LABEL[row.paymentMethod],
     ])
   );
 
+  if (loading) return <Layout><Loading label="กำลังโหลดงบที่คุณดูแล" /></Layout>;
+  if (loadError) return <Layout><div role="alert" className="rounded-lg border border-danger/30 p-4 text-sm text-danger">
+    {loadError.needsIndex ? "ยังไม่ได้สร้าง Firestore index ที่จำเป็น จึงโหลดรายการไม่ได้" : loadError.message}
+    {loadError.indexUrl && <a href={loadError.indexUrl} target="_blank" rel="noreferrer" className="ml-2 underline">สร้าง index</a>}
+  </div></Layout>;
+
   return (
     <Layout>
       <LowFundBalanceBanner />
+      <p className="mb-2 text-sm text-inkSoft">งบที่คุณดูแล</p>
+      {empty && <p className="mb-4 rounded-lg bg-warning-light p-3 text-sm text-warning">ยังไม่ได้รับมอบหมายงบ ติดต่อแอดมิน</p>}
 
-      <div className="grid grid-cols-2 gap-3 mb-5 sm:gap-4">
-        <div className="col-span-2">
-          <MetricCard label="ยอดคงเหลือสุทธิ" value={`${formatBaht(totals.income - totals.expense)} บาท`} icon={Wallet} tone="primary" />
+      <div className="grid gap-3 lg:grid-cols-2 lg:gap-4">
+        <div className="min-w-0">
+          <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <div className="col-span-2 sm:col-span-1">
+              <MetricCard compact label="ยอดคงเหลือสุทธิ" value={`${formatBaht(totals.income - totals.expense)} บาท`} icon={Wallet} tone="primary" />
+            </div>
+            <MetricCard compact label="รายรับรวม" value={formatBaht(totals.income)} icon={ArrowUpRight} tone="income" />
+            <MetricCard compact label="รายจ่ายรวม" value={formatBaht(totals.expense)} icon={ArrowDownRight} tone="expense" />
+          </div>
+          <CashFlowChart transactions={transactions} />
         </div>
-        <MetricCard label="รายรับรวม" value={formatBaht(totals.income)} icon={ArrowUpRight} tone="income" />
-        <MetricCard label="รายจ่ายรวม" value={formatBaht(totals.expense)} icon={ArrowDownRight} tone="expense" />
-      </div>
-
-      <SectionTitle title="รายการของฉัน" />
+        <div className="min-w-0">
+      <SectionTitle title="รายการของฉัน" className="mb-2" />
+      {rows.some((row) => row.status === "needs_evidence") && (
+        <div className="mb-3 rounded-lg border border-warning/40 bg-warning-light p-3 text-sm text-warning">
+          <p className="font-semibold">ต้องแนบหลักฐาน {rows.filter((row) => row.status === "needs_evidence").length} รายการ</p>
+          <ul className="mt-1 space-y-1">
+            {rows.filter((row) => row.status === "needs_evidence").map((row) => (
+              <li key={row.id}><Link className="underline" to={`/transaction/${row.id}`}>{row.itemDescription}</Link></li>
+            ))}
+          </ul>
+        </div>
+      )}
       <TransactionFilterPanel
         filters={filters}
         updateFilter={updateFilter}
@@ -99,6 +100,7 @@ export default function StaffDashboard() {
         totals={totals}
         count={filtered.length}
         showAuthor={false}
+        showTotals={false}
         onExport={exportRows}
       />
 
@@ -127,7 +129,7 @@ export default function StaffDashboard() {
         <EmptyState
           icon={Receipt}
           title="ยังไม่มีรายการ"
-          description="แตะปุ่ม + ด้านล่างเพื่อบันทึกรายการแรก"
+          compact
         />
       ) : filtered.length === 0 ? (
         <EmptyState
@@ -212,6 +214,8 @@ export default function StaffDashboard() {
           )}
         </div>
       )}
+        </div>
+      </div>
     </Layout>
   );
 }

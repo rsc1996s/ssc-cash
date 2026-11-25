@@ -1,14 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import {
   collection,
   doc,
   onSnapshot,
-  addDoc,
-  updateDoc,
   getDoc,
   serverTimestamp,
   writeBatch,
+  runTransaction,
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
@@ -42,6 +41,13 @@ export default function TransferPaymentForm() {
   const [payeeAccounts, setPayeeAccounts] = useState([]);
   const [withdrawals, setWithdrawals] = useState([]);
   const [allPayments, setAllPayments] = useState([]);
+  const [accountsReady, setAccountsReady] = useState(false);
+  const [withdrawalsReady, setWithdrawalsReady] = useState(false);
+  const [paymentsReady, setPaymentsReady] = useState(false);
+  const [loadError, setLoadError] = useState("");
+  const [receivedValue, setReceivedValue] = useState("");
+  const [receivedBaseline, setReceivedBaseline] = useState(null);
+  const [receivedForId, setReceivedForId] = useState("");
 
   const [transferNo, setTransferNo] = useState(null);
   const [sourceAccountId, setSourceAccountId] = useState("");
@@ -51,19 +57,27 @@ export default function TransferPaymentForm() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [dirty, setDirty] = useState(false);
+  const paymentVersion = useRef(null);
 
   useEffect(() => {
-    const unsub1 = onSnapshot(collection(db, "bankAccounts"), (snap) => {
+    const failed = (err) => {
+      console.error("โหลดข้อมูลโอนจ่ายไม่สำเร็จ:", err);
+      setLoadError("โหลดข้อมูลโอนจ่ายไม่สำเร็จ กรุณาตรวจสอบสิทธิ์และการเชื่อมต่อ");
+    };
+    const unsub1 = onSnapshot(collection(db, "bankAccounts"), { includeMetadataChanges: true }, (snap) => {
       const all = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
       setSourceAccounts(all.filter((a) => a.side === "source"));
       setPayeeAccounts(all.filter((a) => a.side === "payee"));
-    });
-    const unsub2 = onSnapshot(collection(db, "withdrawalRequests"), (snap) =>
-      setWithdrawals(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
-    );
-    const unsub3 = onSnapshot(collection(db, "transferPayments"), (snap) =>
-      setAllPayments(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
-    );
+      setAccountsReady(!snap.metadata.fromCache);
+    }, failed);
+    const unsub2 = onSnapshot(collection(db, "withdrawalRequests"), { includeMetadataChanges: true }, (snap) => {
+      setWithdrawals(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      setWithdrawalsReady(!snap.metadata.fromCache);
+    }, failed);
+    const unsub3 = onSnapshot(collection(db, "transferPayments"), { includeMetadataChanges: true }, (snap) => {
+      setAllPayments(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      setPaymentsReady(!snap.metadata.fromCache);
+    }, failed);
     return () => {
       unsub1();
       unsub2();
@@ -76,6 +90,8 @@ export default function TransferPaymentForm() {
     const unsub = onSnapshot(doc(db, "transferPayments", id), (snap) => {
       if (!snap.exists()) return;
       const d = snap.data();
+      if (paymentVersion.current !== null) return;
+      paymentVersion.current = d.updatedAt?.toMillis?.() ?? 0;
       setTransferNo(d.transferNo);
       setSourceAccountId(d.sourceAccountId);
       setLinkedWithdrawalRequestId(d.linkedWithdrawalRequestId);
@@ -91,10 +107,18 @@ export default function TransferPaymentForm() {
   }, [withdrawals, sourceAccountId]);
 
   const linkedWithdrawal = withdrawals.find((w) => w.id === linkedWithdrawalRequestId);
+  useEffect(() => {
+    if (!linkedWithdrawal || receivedForId === linkedWithdrawal.id) return;
+    const amount = linkedWithdrawal.receivedAmount ?? null;
+    setReceivedBaseline(amount);
+    setReceivedValue(amount === null ? "" : String(amount));
+    setReceivedForId(linkedWithdrawal.id);
+  }, [linkedWithdrawal, receivedForId]);
+  const parsedReceived = receivedValue.trim() === "" ? null : Number(receivedValue);
   const remainingBeforeThis =
-    linkedWithdrawal
+    linkedWithdrawal && parsedReceived !== null && Number.isFinite(parsedReceived)
       ? remainingBalance(
-          linkedWithdrawal,
+          { ...linkedWithdrawal, receivedAmount: parsedReceived },
           allPayments.filter((p) => p.id !== id)
         )
       : null;
@@ -123,15 +147,36 @@ export default function TransferPaymentForm() {
 
   async function handleSave() {
     setError("");
+    if (!accountsReady || !withdrawalsReady || !paymentsReady || loadError) {
+      setError("ยังโหลดข้อมูลจากเซิร์ฟเวอร์ไม่ครบ กรุณาตรวจสอบการเชื่อมต่อ");
+      return;
+    }
     const account = sourceAccounts.find((a) => a.id === sourceAccountId);
     if (!account) {
-      setError("กรุณาเลือกบัญชี A (บัญชีต้นทาง)");
+      setError("กรุณาเลือกบัญชีผู้ทำรายการ");
       document.getElementById("payment-source-account")?.focus();
       return;
     }
     if (!linkedWithdrawalRequestId) {
       setError("กรุณาเลือกใบเบิกที่จะตัดยอด");
       document.getElementById("payment-withdrawal-select")?.focus();
+      return;
+    }
+    if (!linkedWithdrawal || receivedForId !== linkedWithdrawal.id || parsedReceived === null || !Number.isFinite(parsedReceived) ||
+      parsedReceived < 0 || parsedReceived > 1000000000 || !/^\d+(\.\d{1,2})?$/.test(receivedValue.trim())) {
+      setError("กรุณาระบุยอดรับเงินจริง 0–1,000,000,000 บาท ทศนิยมไม่เกิน 2 ตำแหน่ง");
+      document.getElementById("received-amount")?.focus();
+      return;
+    }
+    const invalidLine = lines.findIndex((line) => {
+      const amount = String(line.amount).trim();
+      return !line.payeeAccountId || !/^\d+(\.\d{1,2})?$/.test(amount) || Number(amount) <= 0 ||
+        !payeeAccounts.some((payee) => payee.id === line.payeeAccountId);
+    });
+    if (invalidLine !== -1) {
+      setError(`กรุณาตรวจสอบบัญชีปลายทางและยอดเงินของรายการที่ ${invalidLine + 1}`);
+      document.getElementById(window.matchMedia("(min-width: 768px)").matches
+        ? `payment-payee-desktop-${invalidLine}` : `payment-payee-mobile-${invalidLine}`)?.focus();
       return;
     }
     const cleanLines = lines
@@ -148,7 +193,7 @@ export default function TransferPaymentForm() {
         };
       });
     if (cleanLines.length === 0) {
-      setError("กรุณาเพิ่มอย่างน้อย 1 รายการ พร้อมเลือกบัญชีผู้รับโอน");
+      setError("กรุณาเพิ่มอย่างน้อย 1 รายการ พร้อมเลือกบัญชีปลายทาง");
       document.getElementById(
         window.matchMedia("(min-width: 768px)").matches
           ? "payment-payee-desktop-0"
@@ -157,39 +202,57 @@ export default function TransferPaymentForm() {
       return;
     }
 
+    if (parsedReceived !== receivedBaseline && !await confirm({
+      title: "ยืนยันยอดรับเงินจริง",
+      description: `ใบเบิก ${linkedWithdrawal.requestNo}: ${receivedBaseline === null ? "ยังไม่ได้ระบุ" : `${formatBaht(receivedBaseline)} บาท`} → ${formatBaht(parsedReceived)} บาท\nยอดนี้ใช้คำนวณยอดคงเหลือของใบโอนทุกใบ`,
+      confirmLabel: "ยืนยันยอดรับจริง",
+    })) return;
     setBusy(true);
     try {
       const sourceAccountLabel = `${account.bankName} · ${account.accountNumber} (${account.accountName})`;
-      const w = withdrawals.find((x) => x.id === linkedWithdrawalRequestId);
-      if (isNew) {
-        const genNo = await nextDocNumber("transferPayments", "TP");
-        await addDoc(collection(db, "transferPayments"), {
-          transferNo: genNo,
+      const genNo = isNew ? await nextDocNumber("transferPayments", "TP") : null;
+      const paymentRef = isNew ? doc(collection(db, "transferPayments")) : doc(db, "transferPayments", id);
+      const withdrawalRef = doc(db, "withdrawalRequests", linkedWithdrawalRequestId);
+      await runTransaction(db, async (transaction) => {
+        const withdrawalSnap = await transaction.get(withdrawalRef);
+        const paymentSnap = isNew ? null : await transaction.get(paymentRef);
+        if (!withdrawalSnap.exists() || (!isNew && !paymentSnap.exists())) throw new Error("ไม่พบเอกสาร กรุณาโหลดหน้าใหม่");
+        if (paymentSnap && (paymentSnap.data().updatedAt?.toMillis?.() ?? 0) !== paymentVersion.current) {
+          throw new Error("ใบโอนจ่ายถูกแก้ไขโดยผู้อื่น กรุณาโหลดหน้าใหม่");
+        }
+        const current = withdrawalSnap.data();
+        if ((current.receivedAmount ?? null) !== receivedBaseline || current.sourceAccountId !== sourceAccountId) {
+          throw new Error("ยอดรับจริงหรือบัญชีผู้ทำรายการถูกแก้ไขโดยผู้อื่น กรุณาโหลดหน้าใหม่");
+        }
+        if (parsedReceived !== receivedBaseline) {
+          const audit = newAuditEvent({
+            actorUid: user.uid, actorName: profile?.name || user.email,
+            action: "withdrawal-received-changed", targetCollection: "withdrawalRequests",
+            targetId: linkedWithdrawalRequestId,
+            before: { receivedAmount: receivedBaseline }, after: { receivedAmount: parsedReceived },
+          });
+          transaction.update(withdrawalRef, { receivedAmount: parsedReceived, auditLogId: audit.ref.id, updatedAt: serverTimestamp() });
+          queueAuditEvent(transaction, audit);
+        }
+        const fields = {
           sourceAccountId,
           sourceAccountLabel,
           linkedWithdrawalRequestId,
-          linkedWithdrawalRequestNo: w?.requestNo || "",
-          lines: cleanLines,
-          createdAt: serverTimestamp(),
-          createdBy: user.uid,
-          createdByName: profile?.name || user.email,
-          updatedAt: serverTimestamp(),
-        });
-      } else {
-        await updateDoc(doc(db, "transferPayments", id), {
-          sourceAccountId,
-          sourceAccountLabel,
-          linkedWithdrawalRequestId,
-          linkedWithdrawalRequestNo: w?.requestNo || "",
+          linkedWithdrawalRequestNo: current.requestNo || "",
           lines: cleanLines,
           updatedAt: serverTimestamp(),
+        };
+        if (isNew) transaction.set(paymentRef, {
+          ...fields, transferNo: genNo, createdAt: serverTimestamp(),
+          createdBy: user.uid, createdByName: profile?.name || user.email,
         });
-      }
+        else transaction.update(paymentRef, fields);
+      });
       toast(isNew ? "บันทึกใบโอนจ่ายแล้ว" : "บันทึกการแก้ไขใบโอนจ่ายแล้ว");
       navigate("/transfers");
     } catch (err) {
       console.error(err);
-      setError("บันทึกไม่สำเร็จ ลองใหม่อีกครั้ง");
+      setError(err.message || "บันทึกไม่สำเร็จ ลองใหม่อีกครั้ง");
     } finally {
       setBusy(false);
     }
@@ -259,7 +322,7 @@ export default function TransferPaymentForm() {
     return {
       value: withdrawal.id,
       label: withdrawal.requestNo,
-      sublabel: `${withdrawal.date || ""} · ${formatBaht(withdrawal.totalAmount ?? lineTotal(withdrawal.lines))} บาท · คงเหลือ ${formatBaht(remain)} บาท`,
+      sublabel: `${withdrawal.date || ""} · ขอเบิก ${formatBaht(withdrawal.totalAmount ?? lineTotal(withdrawal.lines))} บาท · ${remain === null ? "ยังไม่ระบุยอดรับจริง" : `คงเหลือ ${formatBaht(remain)} บาท`}`,
       searchText: `${withdrawal.requestNo} ${withdrawal.date || ""} ${withdrawal.totalAmount ?? lineTotal(withdrawal.lines)}`,
     };
   });
@@ -272,6 +335,7 @@ export default function TransferPaymentForm() {
           onCancel={cancelForm}
           onSave={handleSave}
           saving={busy}
+          saveDisabled={!accountsReady || !withdrawalsReady || !paymentsReady || Boolean(loadError)}
           saveLabel="บันทึก"
         />
         {!isNew && (
@@ -284,12 +348,12 @@ export default function TransferPaymentForm() {
 
         <div className="grid sm:grid-cols-2 gap-3 mb-3">
           <div>
-            <label className="text-sm text-inkSoft block mb-1">โอนจากบัญชี (A)</label>
+            <label className="text-sm text-inkSoft block mb-1">โอนจากบัญชีผู้ทำรายการ</label>
             <AccountSearchPicker
               id="payment-source-account"
               side="source"
               accounts={sourceAccounts}
-              ariaLabel="บัญชีต้นทาง"
+              ariaLabel="บัญชีผู้ทำรายการ"
               value={sourceAccountId}
               onChange={(v) => {
                 setDirty(true);
@@ -312,10 +376,28 @@ export default function TransferPaymentForm() {
           </div>
         </div>
 
+        {loadError && <p role="alert" className="mb-3 text-sm text-danger">{loadError}</p>}
         {linkedWithdrawal && (
-          <p className="text-xs text-inkSoft mb-4">
-            ยอดคงเหลือในใบเบิกนี้ก่อนบันทึกครั้งนี้: <span className="font-nums">{formatBaht(remainingBeforeThis)} บาท</span>
-          </p>
+          <div className="mb-4 space-y-3 rounded-lg bg-paper p-3">
+            <label className="block text-sm">ยอดรับเงินจริงเข้าบัญชีผู้ทำรายการ (บาท)
+              <Input id="received-amount" type="number" min="0" step="0.01" value={receivedValue}
+                onChange={(event) => { setReceivedValue(event.target.value); setDirty(true); }} />
+            </label>
+            <p className="text-sm text-inkSoft">คงเหลือก่อนใบนี้: {remainingBeforeThis === null ? "กรุณาระบุยอดรับจริง" : `${formatBaht(remainingBeforeThis)} บาท`}</p>
+            {remainingBeforeThis !== null && <p className="text-sm font-semibold">คงเหลือหลังใบนี้: {formatBaht(remainingBeforeThis - lineTotal(lines))} บาท</p>}
+            <div className="text-sm">
+              <p className="font-semibold">ใบโอนจ่ายที่ตัดยอดแล้ว</p>
+              {allPayments.filter((payment) => payment.id !== id && payment.linkedWithdrawalRequestId === linkedWithdrawal.id).length === 0
+                ? <p className="text-inkSoft">ยังไม่มีใบโอนจ่ายอื่น</p>
+                : allPayments.filter((payment) => payment.id !== id && payment.linkedWithdrawalRequestId === linkedWithdrawal.id).map((payment) => (
+                  <div key={payment.id} className="mt-2">
+                    <Link to={`/transfers/payments/${payment.id}`} className="text-blue-700 underline">{payment.transferNo}</Link>
+                    {" · "}{formatBaht(lineTotal(payment.lines))} บาท
+                    <ul>{(payment.lines || []).map((line, index) => <li key={index} className="text-xs text-inkSoft">{line.transferDate} · {line.payeeAccountLabel} · {formatBaht(line.amount)} บาท</li>)}</ul>
+                  </div>
+                ))}
+            </div>
+          </div>
         )}
 
         {/* มือถือ: การ์ดแนวตั้งต่อ 1 บรรทัด */}
@@ -339,10 +421,10 @@ export default function TransferPaymentForm() {
                   id={`payment-payee-mobile-${idx}`}
                   side="payee"
                   accounts={payeeAccounts}
-                  ariaLabel={`บัญชีผู้รับรายการที่ ${idx + 1}`}
+                  ariaLabel={`บัญชีปลายทางรายการที่ ${idx + 1}`}
                   value={l.payeeAccountId}
                   onChange={(v) => updateLine(idx, "payeeAccountId", v)}
-                  placeholder="— เลือกบัญชีผู้รับ —"
+                  placeholder="— เลือกบัญชีปลายทาง —"
                 />
                 <Input
                   type="number"
@@ -364,7 +446,7 @@ export default function TransferPaymentForm() {
           ))}
           {payeeAccounts.length === 0 && (
             <p className="text-xs text-warning">
-              ยังไม่มีบัญชีผู้รับโอนบันทึกไว้ —{" "}
+              ยังไม่มีบัญชีปลายทางบันทึกไว้ —{" "}
               <Link to="/settings/bank-accounts" className="underline">
                 เพิ่มบัญชีก่อน
               </Link>
@@ -379,7 +461,7 @@ export default function TransferPaymentForm() {
               <tr className="text-left text-xs text-inkSoft border-b border-paperLine">
                 <th className="py-2 w-10">ลำดับ</th>
                 <th className="py-2 w-36">วันที่โอน</th>
-                <th className="py-2">ผู้รับโอน (B)</th>
+                <th className="py-2">บัญชีปลายทาง</th>
                 <th className="py-2 w-28 text-right">ยอดเงิน</th>
                 <th className="py-2 w-32">หมายเหตุ</th>
                 <th className="py-2 w-10"></th>
@@ -402,10 +484,10 @@ export default function TransferPaymentForm() {
                       id={`payment-payee-desktop-${idx}`}
                       side="payee"
                       accounts={payeeAccounts}
-                      ariaLabel={`บัญชีผู้รับรายการที่ ${idx + 1}`}
+                      ariaLabel={`บัญชีปลายทางรายการที่ ${idx + 1}`}
                       value={l.payeeAccountId}
                       onChange={(v) => updateLine(idx, "payeeAccountId", v)}
-                      placeholder="— เลือกบัญชีผู้รับ —"
+                      placeholder="— เลือกบัญชีปลายทาง —"
                     />
                   </td>
                   <td className="py-1.5 pr-2">
@@ -436,7 +518,7 @@ export default function TransferPaymentForm() {
           </table>
           {payeeAccounts.length === 0 && (
             <p className="text-xs text-warning mt-1">
-              ยังไม่มีบัญชีผู้รับโอนบันทึกไว้ —{" "}
+              ยังไม่มีบัญชีปลายทางบันทึกไว้ —{" "}
               <Link to="/settings/bank-accounts" className="underline">
                 เพิ่มบัญชีก่อน
               </Link>

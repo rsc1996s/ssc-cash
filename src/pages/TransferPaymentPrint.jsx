@@ -50,7 +50,7 @@ export default function TransferPaymentPrint() {
             <tr className="text-left text-xs text-inkSoft border-b border-paperLine">
               <th className="py-2 w-10">#</th>
               <th className="py-2 w-28">วันที่โอน</th>
-              <th className="py-2">ผู้รับโอน</th>
+              <th className="py-2">บัญชีปลายทาง</th>
               <th className="py-2">หมายเหตุ</th>
               <th className="py-2 text-right w-28">จำนวนเงิน</th>
             </tr>
