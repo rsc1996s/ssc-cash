@@ -3,6 +3,7 @@ import { signOut } from "firebase/auth";
 import { auth } from "../firebase";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { ORGANIZATION } from "../config/org";
 
 export default function PendingApproval() {
   const navigate = useNavigate();
@@ -21,9 +22,10 @@ export default function PendingApproval() {
     navigate("/login");
   }
   return (
-    <div className="min-h-screen flex items-center justify-center bg-paper px-4">
-      <div className="w-full max-w-sm bg-white border border-paperLine rounded-lg p-6 text-center">
-        <div className="mb-4 inline-flex rounded-full bg-amber-light px-3 py-1 text-sm font-semibold text-amber">รออนุมัติ</div>
+    <div className="aurora-auth min-h-screen flex items-center justify-center px-4">
+      <div className="aurora-auth-card w-full max-w-sm border border-white rounded-card p-6 text-center">
+        <p className="mb-2 text-sm font-medium text-primary-dark">{ORGANIZATION.name}</p>
+        <div className="mb-4 inline-flex rounded-full bg-warning-light px-3 py-1 text-sm font-semibold text-warning">รออนุมัติ</div>
         <h1 className="text-lg font-semibold mb-2">บัญชีของคุณรออนุมัติ</h1>
         <p className="text-sm text-inkSoft mb-5">
           กรุณาแจ้งเจ้าของร้านให้เข้าไปกำหนดสิทธิ์การใช้งานให้คุณในเมนู "ผู้ใช้งาน"

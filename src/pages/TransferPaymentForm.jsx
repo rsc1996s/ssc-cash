@@ -324,7 +324,7 @@ export default function TransferPaymentForm() {
             <div key={idx} className="border border-paperLine rounded-lg p-3 bg-paper/40">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-nums text-inkSoft">รายการที่ {idx + 1}</span>
-                <button onClick={() => removeLine(idx)} className="text-rust text-xs px-2 py-1 -mr-2">
+                <button onClick={() => removeLine(idx)} className="text-danger text-xs px-2 py-1 -mr-2">
                   ลบ
                 </button>
               </div>
@@ -333,7 +333,7 @@ export default function TransferPaymentForm() {
                   type="date"
                   value={l.transferDate}
                   onChange={(e) => updateLine(idx, "transferDate", e.target.value)}
-                  className="w-full border border-paperLine rounded px-3 py-2.5 text-sm focus:border-teal"
+                  className="w-full border border-paperLine rounded px-3 py-2.5 text-sm focus:border-primary"
                 />
                 <AccountSearchPicker
                   id={`payment-payee-mobile-${idx}`}
@@ -350,20 +350,20 @@ export default function TransferPaymentForm() {
                   inputMode="decimal"
                   value={l.amount}
                   onChange={(e) => updateLine(idx, "amount", e.target.value)}
-                  className="w-full border border-paperLine rounded px-3 py-2.5 text-sm text-right font-nums focus:border-teal"
+                  className="w-full border border-paperLine rounded px-3 py-2.5 text-sm text-right font-nums focus:border-primary"
                   placeholder="ยอดเงิน"
                 />
                 <Input
                   value={l.note}
                   onChange={(e) => updateLine(idx, "note", e.target.value)}
                   placeholder="หมายเหตุ"
-                  className="w-full border border-paperLine rounded px-3 py-2.5 text-sm focus:border-teal"
+                  className="w-full border border-paperLine rounded px-3 py-2.5 text-sm focus:border-primary"
                 />
               </div>
             </div>
           ))}
           {payeeAccounts.length === 0 && (
-            <p className="text-xs text-amber">
+            <p className="text-xs text-warning">
               ยังไม่มีบัญชีผู้รับโอนบันทึกไว้ —{" "}
               <Link to="/settings/bank-accounts" className="underline">
                 เพิ่มบัญชีก่อน
@@ -394,7 +394,7 @@ export default function TransferPaymentForm() {
                       type="date"
                       value={l.transferDate}
                       onChange={(e) => updateLine(idx, "transferDate", e.target.value)}
-                      className="w-full border border-paperLine rounded px-2 py-1.5 text-sm focus:border-teal"
+                      className="w-full border border-paperLine rounded px-2 py-1.5 text-sm focus:border-primary"
                     />
                   </td>
                   <td className="py-1.5 pr-2">
@@ -414,7 +414,7 @@ export default function TransferPaymentForm() {
                       step="0.01"
                       value={l.amount}
                       onChange={(e) => updateLine(idx, "amount", e.target.value)}
-                      className="w-full border border-paperLine rounded px-2 py-1.5 text-sm text-right font-nums focus:border-teal"
+                      className="w-full border border-paperLine rounded px-2 py-1.5 text-sm text-right font-nums focus:border-primary"
                       placeholder="0.00"
                     />
                   </td>
@@ -422,11 +422,11 @@ export default function TransferPaymentForm() {
                     <Input
                       value={l.note}
                       onChange={(e) => updateLine(idx, "note", e.target.value)}
-                      className="w-full border border-paperLine rounded px-2 py-1.5 text-sm focus:border-teal"
+                      className="w-full border border-paperLine rounded px-2 py-1.5 text-sm focus:border-primary"
                     />
                   </td>
                   <td className="py-1.5 text-center">
-                    <button onClick={() => removeLine(idx)} className="text-rust text-xs">
+                    <button onClick={() => removeLine(idx)} className="text-danger text-xs">
                       ลบ
                     </button>
                   </td>
@@ -435,7 +435,7 @@ export default function TransferPaymentForm() {
             </tbody>
           </table>
           {payeeAccounts.length === 0 && (
-            <p className="text-xs text-amber mt-1">
+            <p className="text-xs text-warning mt-1">
               ยังไม่มีบัญชีผู้รับโอนบันทึกไว้ —{" "}
               <Link to="/settings/bank-accounts" className="underline">
                 เพิ่มบัญชีก่อน
@@ -456,16 +456,16 @@ export default function TransferPaymentForm() {
         </div>
 
         {overLimit && (
-          <p className="text-sm text-amber mb-3 text-right">
+          <p className="text-sm text-warning mb-3 text-right">
             * ยอดรวมเกินยอดคงเหลือของใบเบิกนี้ ({formatBaht(remainingBeforeThis)} บาท) กรุณาตรวจสอบก่อนบันทึก
           </p>
         )}
 
-        {error && <p className="text-sm text-rust mb-3">{error}</p>}
+        {error && <p className="text-sm text-danger mb-3">{error}</p>}
 
         <div className="flex justify-end">
           {!isNew && (
-            <button onClick={handleDelete} className="border border-rust text-rust rounded px-5 py-2.5 text-sm">
+            <button onClick={handleDelete} className="border border-danger text-danger rounded px-5 py-2.5 text-sm">
               ลบใบนี้
             </button>
           )}

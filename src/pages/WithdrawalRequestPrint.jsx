@@ -57,7 +57,7 @@ export default function WithdrawalRequestPrint() {
   }, [isOwner]);
 
   if (loading) return <div className="p-8 text-inkSoft">กำลังโหลด...</div>;
-  if (error || !request) return <div role="alert" className="p-8 text-rust">{error || "ไม่พบใบเบิกนี้"}</div>;
+  if (error || !request) return <div role="alert" className="p-8 text-danger">{error || "ไม่พบใบเบิกนี้"}</div>;
 
   function exportCsv() {
     const rows = withdrawalReportRows(request.lines || [], groupByCategory).map((entry) => {

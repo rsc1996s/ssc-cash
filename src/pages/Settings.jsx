@@ -62,7 +62,7 @@ export default function Settings() {
               <span className="flex items-center gap-2 font-semibold">
                 {label}
                 {showPendingCount && pendingUserCount > 0 && (
-                  <span className="inline-flex min-w-6 items-center justify-center rounded-full bg-rust px-2 py-0.5 text-xs font-semibold text-white">
+                  <span className="inline-flex min-w-6 items-center justify-center rounded-full bg-danger px-2 py-0.5 text-xs font-semibold text-white">
                     {pendingUserCount}
                   </span>
                 )}

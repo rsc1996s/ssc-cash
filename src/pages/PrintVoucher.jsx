@@ -26,7 +26,7 @@ export default function PrintVoucher() {
           <p className="text-sm text-inkSoft mb-3">
             รายการนี้ยังไม่ได้รับการอนุมัติและเซ็นยืนยัน จึงยังพิมพ์ใบเบิกไม่ได้
           </p>
-          <Link to={`/transaction/${id}`} className="text-teal text-sm font-medium">
+          <Link to={`/transaction/${id}`} className="text-primary text-sm font-medium">
             กลับไปหน้ารายการ
           </Link>
         </div>
@@ -42,7 +42,7 @@ export default function PrintVoucher() {
         </Link>
         <button
           onClick={() => window.print()}
-          className="bg-teal text-white rounded px-4 py-2 text-sm font-medium"
+          className="bg-primary text-white rounded px-4 py-2 text-sm font-medium"
         >
           พิมพ์ / บันทึกเป็น PDF
         </button>

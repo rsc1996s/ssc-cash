@@ -278,9 +278,9 @@ export default function Reports() {
             <dt className="text-inkSoft">ยอดยกมา</dt>
             <dd className="text-right">{formatBaht(statement.openingBalance)}</dd>
             <dt className="text-inkSoft">เงินเข้ารวม (ช่วงนี้)</dt>
-            <dd className="text-right text-teal">+{formatBaht(statement.totalIn)}</dd>
+            <dd className="text-right text-primary">+{formatBaht(statement.totalIn)}</dd>
             <dt className="text-inkSoft">เงินออกรวม (ช่วงนี้)</dt>
-            <dd className="text-right text-rust">-{formatBaht(statement.totalOut)}</dd>
+            <dd className="text-right text-danger">-{formatBaht(statement.totalOut)}</dd>
             <dt className="font-medium border-t border-ink pt-1">ยอดคงเหลือ</dt>
             <dd className="text-right font-medium border-t border-ink pt-1">
               {formatBaht(statement.closingBalance)}

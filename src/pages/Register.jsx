@@ -8,6 +8,7 @@ import PinPad from "../components/PinPad";
 import FormHeader from "../components/ui/FormHeader";
 import { useFeedback } from "../components/ui/FeedbackProvider";
 import Input from "../components/ui/Input";
+import { ORGANIZATION } from "../config/org";
 
 export default function Register() {
   const [step, setStep] = useState(1); // 1: ชื่อ, 2: ตั้ง PIN, 3: ยืนยัน PIN
@@ -135,8 +136,9 @@ export default function Register() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-paper px-4">
-      <div className="w-full max-w-sm bg-white border border-paperLine rounded-lg p-6 text-center">
+    <div className="aurora-auth min-h-screen flex items-center justify-center px-4">
+      <div className="aurora-auth-card w-full max-w-sm border border-white rounded-card p-6 text-center">
+        <p className="mb-2 text-sm font-medium text-primary-dark">{ORGANIZATION.name}</p>
         <FormHeader
           title={step === 3 ? "ยืนยันการลงทะเบียน" : "ลงทะเบียนพนักงานใหม่"}
           onCancel={cancelRegistration}
@@ -163,7 +165,7 @@ export default function Register() {
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full border border-paperLine rounded px-3 py-2 focus:border-teal"
+                className="w-full border border-paperLine rounded px-3 py-2 focus:border-primary"
               />
             </div>
             <div>
@@ -177,11 +179,11 @@ export default function Register() {
                 required
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full border border-paperLine rounded px-3 py-2 focus:border-teal"
+                className="w-full border border-paperLine rounded px-3 py-2 focus:border-primary"
               />
               <p className="text-xs text-inkSoft mt-1">3-24 ตัว ขึ้นต้นด้วยตัวอักษร</p>
             </div>
-            {error && <p className="text-sm text-rust">{error}</p>}
+            {error && <p className="text-sm text-danger">{error}</p>}
           </form>
         )}
 
@@ -189,7 +191,7 @@ export default function Register() {
           <div>
             <p className="text-sm text-inkSoft mb-3">ตั้ง PIN สำหรับเข้าสู่ระบบ (6 หลัก)</p>
             <PinPad value={pin} onChange={setPin} maxLength={6} />
-            {error && <p className="text-sm text-rust mt-3">{error}</p>}
+            {error && <p className="text-sm text-danger mt-3">{error}</p>}
             <div className="flex gap-2 mt-4">
               <button
                 type="button"
@@ -209,7 +211,7 @@ export default function Register() {
           <div>
             <p className="text-sm text-inkSoft mb-3">พิมพ์ PIN อีกครั้งเพื่อยืนยัน</p>
             <PinPad value={pinConfirm} onChange={setPinConfirm} maxLength={pin.length} disabled={busy} />
-            {error && <p className="text-sm text-rust mt-3">{error}</p>}
+            {error && <p className="text-sm text-danger mt-3">{error}</p>}
             <div className="flex gap-2 mt-4">
               <button
                 type="button"
@@ -229,7 +231,7 @@ export default function Register() {
 
         <p className="text-sm text-inkSoft mt-5">
           มีบัญชีอยู่แล้ว?{" "}
-          <Link to="/login" className="text-teal font-medium">
+          <Link to="/login" className="text-primary font-medium">
             เข้าสู่ระบบ
           </Link>
         </p>

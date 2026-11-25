@@ -476,7 +476,7 @@ export default function WithdrawalRequestForm() {
         )}
 
         {!isNew && !canEdit && (
-          <p className="text-xs text-amber bg-amber-light border border-amber/40 rounded px-3 py-2 mb-4">
+          <p className="text-xs text-warning bg-warning-light border border-warning/40 rounded px-3 py-2 mb-4">
             ใบเบิกนี้สร้างโดย {createdByName} — ดูได้อย่างเดียว แก้ไข/ลบได้เฉพาะผู้สร้างเองหรือเจ้าของร้าน
           </p>
         )}
@@ -486,7 +486,7 @@ export default function WithdrawalRequestForm() {
             สร้างเมื่อ {createdAt ? formatDateTime(createdAt) : "-"} โดย {createdByName || "-"}
             {" · "}
             {isModified ? `แก้ไขล่าสุด ${formatDateTime(updatedAt)}` : "แก้ไขล่าสุด: ไม่มี"}
-            {isModified && <span className="ml-2 font-semibold text-amber">มีการแก้ไข</span>}
+            {isModified && <span className="ml-2 font-semibold text-warning">มีการแก้ไข</span>}
           </div>
         )}
 
@@ -534,7 +534,7 @@ export default function WithdrawalRequestForm() {
               placeholder="— เลือกบัญชี —"
             />
             {sourceAccounts.length === 0 && (
-              <p className="text-xs text-amber mt-1">
+              <p className="text-xs text-warning mt-1">
                 ยังไม่มีบัญชีต้นทางในคลัง — กรุณาติดต่อเจ้าของร้านให้เพิ่มบัญชีก่อน
               </p>
             )}
@@ -549,7 +549,7 @@ export default function WithdrawalRequestForm() {
                 setDate(e.target.value);
               }}
               disabled={!canEdit}
-              className="w-full border border-paperLine rounded px-3 py-2 focus:border-teal disabled:bg-paper disabled:text-inkSoft"
+              className="w-full border border-paperLine rounded px-3 py-2 focus:border-primary disabled:bg-paper disabled:text-inkSoft"
             />
           </div>
         </div>
@@ -631,7 +631,7 @@ export default function WithdrawalRequestForm() {
                       onChange={(e) => updateLine(idx, "description", e.target.value)}
                       placeholder="รายละเอียด"
                       disabled={!canEdit}
-                      className="w-full border border-paperLine rounded px-2 py-1.5 text-sm focus:border-teal disabled:bg-paper disabled:text-inkSoft"
+                      className="w-full border border-paperLine rounded px-2 py-1.5 text-sm focus:border-primary disabled:bg-paper disabled:text-inkSoft"
                     />
                   </td>
                   <td className="py-1.5 pr-2">
@@ -642,7 +642,7 @@ export default function WithdrawalRequestForm() {
                       value={l.amount}
                       onChange={(e) => updateLine(idx, "amount", e.target.value)}
                       disabled={!canEdit}
-                      className="w-full border border-paperLine rounded px-2 py-1.5 text-sm text-right font-nums focus:border-teal disabled:bg-paper disabled:text-inkSoft"
+                      className="w-full border border-paperLine rounded px-2 py-1.5 text-sm text-right font-nums focus:border-primary disabled:bg-paper disabled:text-inkSoft"
                       placeholder="0.00"
                     />
                   </td>
@@ -666,12 +666,12 @@ export default function WithdrawalRequestForm() {
           </div>
         </div>
 
-        {error && <p className="text-sm text-rust mb-3">{error}</p>}
+        {error && <p className="text-sm text-danger mb-3">{error}</p>}
 
         {canEdit && (
           <div className="flex justify-end">
             {!isNew && (
-              <button onClick={handleDelete} className="border border-rust text-rust rounded px-5 py-2.5 text-sm">
+              <button onClick={handleDelete} className="border border-danger text-danger rounded px-5 py-2.5 text-sm">
                 ลบใบเบิกนี้
               </button>
             )}

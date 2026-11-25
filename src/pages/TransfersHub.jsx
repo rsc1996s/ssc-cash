@@ -61,7 +61,7 @@ export default function TransfersHub() {
       {(!isOwner || tab === "withdrawals") ? (
         <>
           <div className="flex justify-end mb-3">
-            <Link to="/transfers/withdrawals/new" className="text-sm bg-teal text-white rounded px-3 py-1.5 font-medium">
+            <Link to="/transfers/withdrawals/new" className="text-sm bg-primary text-white rounded px-3 py-1.5 font-medium">
               + สร้างใบเบิกใหม่
             </Link>
           </div>
@@ -75,7 +75,7 @@ export default function TransfersHub() {
                 return (
                   <div
                     key={w.id}
-                    className="bg-white border border-paperLine rounded-lg p-4 hover:border-teal flex items-center gap-3"
+                    className="bg-white border border-paperLine rounded-lg p-4 hover:border-primary flex items-center gap-3"
                   >
                     <Link to={`/transfers/withdrawals/${w.id}`} className="flex-1 min-w-0">
                       <div className="flex justify-between items-start">
@@ -92,7 +92,7 @@ export default function TransfersHub() {
                           {isOwner && (
                             <div
                               className={`text-xs font-nums mt-1 ${
-                                remain <= 0 ? "text-teal" : "text-amber"
+                                remain <= 0 ? "text-primary" : "text-warning"
                               }`}
                             >
                               {remain <= 0 ? "ตัดยอดครบแล้ว" : `คงเหลือ ${formatBaht(remain)}`}
@@ -104,7 +104,7 @@ export default function TransfersHub() {
                     <Link
                       to={`/transfers/withdrawals/${w.id}/print`}
                       target="_blank"
-                      className="shrink-0 text-xs border border-paperLine rounded px-3 py-2 hover:border-teal hover:text-teal"
+                      className="shrink-0 text-xs border border-paperLine rounded px-3 py-2 hover:border-primary hover:text-primary"
                     >
                       พิมพ์
                     </Link>
@@ -122,7 +122,7 @@ export default function TransfersHub() {
       ) : (
         <>
           <div className="flex justify-end mb-3">
-            <Link to="/transfers/payments/new" className="text-sm bg-teal text-white rounded px-3 py-1.5 font-medium">
+            <Link to="/transfers/payments/new" className="text-sm bg-primary text-white rounded px-3 py-1.5 font-medium">
               + สร้างใบโอนจ่ายใหม่
             </Link>
           </div>
@@ -133,7 +133,7 @@ export default function TransfersHub() {
               {payments.slice(0, visibleCount).map((p) => (
                 <div
                   key={p.id}
-                  className="bg-white border border-paperLine rounded-lg p-4 hover:border-teal flex items-center gap-3"
+                  className="bg-white border border-paperLine rounded-lg p-4 hover:border-primary flex items-center gap-3"
                 >
                   <Link to={`/transfers/payments/${p.id}`} className="flex-1 min-w-0">
                     <div className="flex justify-between items-start">
@@ -144,7 +144,7 @@ export default function TransfersHub() {
                           ตัดกับใบเบิก {p.linkedWithdrawalRequestNo} · {(p.lines || []).length} รายการ
                         </div>
                       </div>
-                      <div className="font-nums text-lg text-rust">
+                      <div className="font-nums text-lg text-danger">
                         -{formatBaht(lineTotal(p.lines))}
                       </div>
                     </div>
@@ -152,7 +152,7 @@ export default function TransfersHub() {
                   <Link
                     to={`/transfers/payments/${p.id}/print`}
                     target="_blank"
-                    className="shrink-0 text-xs border border-paperLine rounded px-3 py-2 hover:border-teal hover:text-teal"
+                    className="shrink-0 text-xs border border-paperLine rounded px-3 py-2 hover:border-primary hover:text-primary"
                   >
                     พิมพ์
                   </Link>

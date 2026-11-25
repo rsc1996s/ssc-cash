@@ -103,7 +103,7 @@ export default function StaffDashboard() {
       />
 
       {loadError ? (
-        <div role="alert" className="bg-rust/5 border border-rust/30 rounded-lg p-4 text-sm text-rust">
+        <div role="alert" className="bg-danger/5 border border-danger/30 rounded-lg p-4 text-sm text-danger">
           <p>{loadError.needsIndex
             ? "ยังไม่ได้สร้าง Firestore index ที่จำเป็น จึงโหลดรายการไม่ได้"
             : loadError.message}</p>
@@ -194,7 +194,7 @@ export default function StaffDashboard() {
                 <Link
                   to={`/transaction/${r.id}/print`}
                   target="_blank"
-                  className="shrink-0 text-xs border border-paperLine rounded-lg px-3 py-2 hover:border-teal hover:text-teal"
+                  className="shrink-0 text-xs border border-paperLine rounded-lg px-3 py-2 hover:border-primary hover:text-primary"
                 >
                   พิมพ์
                 </Link>

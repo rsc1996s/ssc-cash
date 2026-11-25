@@ -6,7 +6,7 @@ import { useAuth } from "../context/AuthContext";
 import Layout from "../components/Layout";
 import StatusBadge from "../components/ui/StatusBadge";
 import SignaturePad from "../components/SignaturePad";
-import { formatBaht, formatDateTime, TYPE_LABEL, PAYMENT_LABEL } from "../lib/format";
+import { formatBaht, formatDate, formatDateTime, TYPE_LABEL, PAYMENT_LABEL } from "../lib/format";
 import { newAuditEvent, queueAuditEvent } from "../lib/audit";
 import FormHeader from "../components/ui/FormHeader";
 import Sheet from "../components/ui/Sheet";
@@ -269,7 +269,13 @@ export default function TransactionDetail() {
             )}
             <dt className="text-inkSoft">หมายเหตุ</dt>
             <dd className="text-right">{tx.note || "-"}</dd>
-            <dt className="text-inkSoft">บันทึกเมื่อ</dt>
+            <dt className="text-inkSoft">วันที่ทำรายการ</dt>
+            <dd className="text-right">
+              {tx.transactionDate
+                ? formatDate(new Date(`${tx.transactionDate}T00:00:00`))
+                : formatDate(tx.createdAt)}
+            </dd>
+            <dt className="text-inkSoft">เวลาบันทึก (ระบบ)</dt>
             <dd className="text-right">{formatDateTime(tx.createdAt)}</dd>
             {tx.reviewedAt && (
               <>
@@ -303,13 +309,13 @@ export default function TransactionDetail() {
                   step={f.type === "number" ? "0.01" : undefined}
                   value={draft[f.key]}
                   onChange={(e) => setDraft((d) => ({ ...d, [f.key]: e.target.value }))}
-                  className="w-full border border-paperLine rounded px-3 py-2 focus:border-teal"
+                  className="w-full border border-paperLine rounded px-3 py-2 focus:border-primary"
                 />
               </div>
             ))}
             <div>
               <label className="text-sm text-inkSoft block mb-1">
-                เหตุผลในการแก้ไข <span className="text-rust">*จำเป็น</span>
+                เหตุผลในการแก้ไข <span className="text-danger">*จำเป็น</span>
               </label>
               <Textarea
                 id="transaction-edit-reason"
@@ -317,11 +323,11 @@ export default function TransactionDetail() {
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
                 rows={2}
-                className="w-full border border-paperLine rounded px-3 py-2 focus:border-teal"
+                className="w-full border border-paperLine rounded px-3 py-2 focus:border-primary"
                 placeholder="เช่น พิมพ์จำนวนเงินผิด แก้จาก 150 เป็น 250"
               />
             </div>
-            {error && <p className="text-sm text-rust">{error}</p>}
+            {error && <p className="text-sm text-danger">{error}</p>}
           </form>
         )}
 
@@ -366,7 +372,7 @@ export default function TransactionDetail() {
               value={reviewNote}
               onChange={(e) => setReviewNote(e.target.value)}
               rows={2}
-              className="w-full border border-paperLine rounded px-3 py-2 mb-3 focus:border-teal"
+              className="w-full border border-paperLine rounded px-3 py-2 mb-3 focus:border-primary"
             />
 
             <p className="text-sm text-inkSoft mb-2">
@@ -376,14 +382,14 @@ export default function TransactionDetail() {
               <button
                 onClick={() => setShowSignFlow(true)}
                 disabled={busy}
-                className="bg-teal text-white rounded px-4 py-2 text-sm font-medium"
+                className="bg-primary text-white rounded px-4 py-2 text-sm font-medium"
               >
                 อนุมัติ (เซ็นยืนยัน)
               </button>
               <button
                 onClick={() => review("rejected")}
                 disabled={busy}
-                className="bg-rust text-white rounded px-4 py-2 text-sm font-medium"
+                className="bg-danger text-white rounded px-4 py-2 text-sm font-medium"
               >
                 ตีกลับ
               </button>
@@ -433,7 +439,7 @@ export default function TransactionDetail() {
               .slice()
               .reverse()
               .map((h, i) => (
-                <li key={i} className="text-sm border-l-2 border-amber pl-3">
+                <li key={i} className="text-sm border-l-2 border-warning pl-3">
                   <div className="font-medium">
                     {h.editedByName} · {new Date(h.editedAt).toLocaleString("th-TH")}
                   </div>
@@ -485,7 +491,7 @@ export default function TransactionDetail() {
       >
         <p className="mb-3 text-sm text-inkSoft">ลงลายเซ็นเพื่อยืนยันการอนุมัติ รายการจะถือว่าเบิกสำเร็จหลังบันทึกแล้ว</p>
         <SignaturePad onChange={setSignatureDataUrl} />
-        {error && <p role="alert" className="mt-2 text-sm text-rust">{error}</p>}
+        {error && <p role="alert" className="mt-2 text-sm text-danger">{error}</p>}
       </Sheet>
     </Layout>
   );
