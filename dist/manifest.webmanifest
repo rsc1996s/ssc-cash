@@ -1,6 +1,6 @@
 {
-  "name": "บันทึกรายรับ-รายจ่ายหน้าร้าน",
-  "short_name": "บันทึกหน้าร้าน",
+  "name": "SC-ACC",
+  "short_name": "SCA",
   "lang": "th",
   "display": "standalone",
   "start_url": "/",

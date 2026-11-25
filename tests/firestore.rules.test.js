@@ -45,6 +45,51 @@ function transactionData(overrides = {}) {
   };
 }
 
+function evidenceBatch(firestore, uid, id, action, before, after, updates, auditOverrides = {}) {
+  const batch = firestore.batch();
+  const audit = firestore.collection("auditLogs").doc();
+  const entry = {
+    actorUid: uid,
+    actorName: "ผู้ทดสอบ",
+    action,
+    targetCollection: "transactions",
+    targetId: id,
+    before: { status: before },
+    after: { status: after },
+    createdAt: serverTimestamp(),
+    ...auditOverrides,
+  };
+  batch.update(firestore.doc(`transactions/${id}`), {
+    ...updates, status: after, updatedAt: serverTimestamp(), auditLogId: audit.id,
+  });
+  batch.set(audit, entry);
+  batch.set(firestore.doc(`activityLogs/${audit.id}`), entry);
+  return batch;
+}
+
+function requestUpdates(uid = "owner-a", note = "กรุณาแนบใบเสร็จ") {
+  return {
+    evidenceRequestedBy: uid,
+    evidenceRequestedByName: "ผู้ตรวจสอบ",
+    evidenceRequestedAt: serverTimestamp(),
+    evidenceRequestNote: note,
+  };
+}
+
+function submitUpdates(photos = [validPhoto]) {
+  return {
+    receiptPhotoURL: photos[0] || null,
+    receiptPhotoURLs: photos,
+    evidenceSubmittedAt: serverTimestamp(),
+  };
+}
+
+async function seedTransaction(id, overrides = {}) {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().doc(`transactions/${id}`).set(transactionData(overrides));
+  });
+}
+
 async function seedData() {
   await testEnv.withSecurityRulesDisabled(async (context) => {
     const firestore = context.firestore();
@@ -58,6 +103,7 @@ async function seedData() {
       ["owner-a", "owner", false],
       ["owner-b", "owner", false],
       ["staff-a", "staff", false],
+      ["staff-b", "staff", false],
       ["guest-a", "guest", false],
       ["disabled-a", "staff", true],
       ["pending-a", "pending", false],
@@ -199,6 +245,179 @@ describe("Firestore rules", { concurrency: false }, () => {
       status: "approved",
     }));
     await assertFails(firestore.doc("transferPayments/payment-a").get());
+  });
+
+  test("actual receipts require owner and a matching audit; legacy requests remain editable", async () => {
+    const owner = testEnv.authenticatedContext("owner-a").firestore();
+    const staff = testEnv.authenticatedContext("staff-a").firestore();
+    const guest = testEnv.authenticatedContext("guest-a").firestore();
+    const updateReceipt = (firestore, uid, amount, before = null, override = {}) => {
+      const batch = firestore.batch();
+      const audit = firestore.collection("auditLogs").doc();
+      const entry = {
+        actorUid: uid, actorName: "ทดสอบ", action: "withdrawal-received-changed",
+        targetCollection: "withdrawalRequests", targetId: "withdrawal-a",
+        before: { receivedAmount: before }, after: { receivedAmount: amount },
+        createdAt: serverTimestamp(), ...override,
+      };
+      batch.update(firestore.doc("withdrawalRequests/withdrawal-a"), {
+        receivedAmount: amount, updatedAt: serverTimestamp(), auditLogId: audit.id,
+      });
+      batch.set(audit, entry);
+      batch.set(firestore.doc(`activityLogs/${audit.id}`), entry);
+      return batch.commit();
+    };
+    await assertFails(staff.doc("withdrawalRequests/withdrawal-a").update({
+      receivedAmount: 52400, updatedAt: serverTimestamp(),
+    }));
+    await assertFails(guest.doc("withdrawalRequests/withdrawal-a").update({
+      receivedAmount: 52400, updatedAt: serverTimestamp(),
+    }));
+    await assertFails(owner.doc("withdrawalRequests/withdrawal-a").update({
+      receivedAmount: 52400, updatedAt: serverTimestamp(), auditLogId: "missing",
+    }));
+    await assertFails(updateReceipt(owner, "owner-a", 52400, null, { after: { receivedAmount: 1 } }));
+    await assertFails(updateReceipt(owner, "owner-a", -1));
+    await assertSucceeds(updateReceipt(owner, "owner-a", 52400));
+    await assertSucceeds(updateReceipt(owner, "owner-a", 52500, 52400));
+    await assertSucceeds(staff.doc("withdrawalRequests/withdrawal-a").update({
+      note: "แก้ไข", updatedAt: serverTimestamp(),
+    }));
+    await assertFails(staff.doc("withdrawalRequests/withdrawal-a").update({
+      receivedAmount: 1, updatedAt: serverTimestamp(),
+    }));
+  });
+
+  test("only owners may create origin bank accounts", async () => {
+    const owner = testEnv.authenticatedContext("owner-a").firestore();
+    const staff = testEnv.authenticatedContext("staff-a").firestore();
+    const account = (uid) => ({
+      side: "origin", bankName: "ธนาคารทดสอบ", accountNumber: "1234",
+      accountName: "ต้นทาง", note: "", createdBy: uid, createdAt: serverTimestamp(),
+    });
+    await assertSucceeds(owner.doc("bankAccounts/origin-a").set(account("owner-a")));
+    await assertFails(staff.doc("bankAccounts/origin-b").set(account("staff-a")));
+  });
+
+  test("receipt audit and first transfer can be committed atomically", async () => {
+    const owner = testEnv.authenticatedContext("owner-a").firestore();
+    const audit = owner.collection("auditLogs").doc();
+    const entry = {
+      actorUid: "owner-a", actorName: "ทดสอบ", action: "withdrawal-received-changed",
+      targetCollection: "withdrawalRequests", targetId: "withdrawal-a",
+      before: { receivedAmount: null }, after: { receivedAmount: 52400 },
+      createdAt: serverTimestamp(),
+    };
+    const batch = owner.batch();
+    batch.update(owner.doc("withdrawalRequests/withdrawal-a"), {
+      receivedAmount: 52400, auditLogId: audit.id, updatedAt: serverTimestamp(),
+    });
+    batch.set(audit, entry);
+    batch.set(owner.doc(`activityLogs/${audit.id}`), entry);
+    batch.set(owner.doc("transferPayments/payment-first"), {
+      transferNo: "TP-0001", sourceAccountId: "source-a", sourceAccountLabel: "บัญชีทดสอบ",
+      linkedWithdrawalRequestId: "withdrawal-a", linkedWithdrawalRequestNo: "WR-0001",
+      lines: [{ lineNo: 1, amount: 50000, payeeAccountId: "payee-a" }],
+      createdAt: serverTimestamp(), createdBy: "owner-a", createdByName: "ทดสอบ",
+      updatedAt: serverTimestamp(),
+    });
+    await assertSucceeds(batch.commit());
+    assert.equal((await owner.doc("withdrawalRequests/withdrawal-a").get()).data().receivedAmount, 52400);
+  });
+
+  test("transaction creation accepts zero to three valid photos only", async () => {
+    const firestore = testEnv.authenticatedContext("staff-a").firestore();
+    await assertSucceeds(firestore.doc("transactions/no-photo").set(transactionData({
+      receiptPhotoURL: null, receiptPhotoURLs: [],
+    })));
+    await assertSucceeds(firestore.doc("transactions/three-photos").set(transactionData({
+      receiptPhotoURLs: [validPhoto, validPhoto, validPhoto],
+    })));
+    for (const [id, overrides] of [
+      ["wrong-empty", { receiptPhotoURL: validPhoto, receiptPhotoURLs: [] }],
+      ["wrong-first", { receiptPhotoURL: null, receiptPhotoURLs: [validPhoto] }],
+      ["four", { receiptPhotoURLs: Array(4).fill(validPhoto) }],
+      ["bad-type", { receiptPhotoURL: "data:image/gif;base64,AAAA", receiptPhotoURLs: ["data:image/gif;base64,AAAA"] }],
+      ["too-large", { receiptPhotoURL: `data:image/jpeg;base64,${"A".repeat(175000)}`, receiptPhotoURLs: [`data:image/jpeg;base64,${"A".repeat(175000)}`] }],
+      ["wrong-status", { status: "needs_evidence" }],
+    ]) await assertFails(firestore.doc(`transactions/${id}`).set(transactionData(overrides)));
+  });
+
+  test("request, submission, and cancellation require matching audit and proper roles", async () => {
+    const owner = testEnv.authenticatedContext("owner-a").firestore();
+    const staff = testEnv.authenticatedContext("staff-a").firestore();
+    const other = testEnv.authenticatedContext("staff-b").firestore();
+    const guest = testEnv.authenticatedContext("guest-a").firestore();
+    const pending = testEnv.authenticatedContext("pending-a").firestore();
+    await seedTransaction("evidence-a", { receiptPhotoURL: null, receiptPhotoURLs: [] });
+    const request = (firestore, uid, updates = requestUpdates(uid), auditOverrides = {}) =>
+      evidenceBatch(firestore, uid, "evidence-a", "transaction-evidence-requested", "pending", "needs_evidence", updates, auditOverrides);
+    await assertFails(request(staff, "staff-a").commit());
+    await assertFails(request(guest, "guest-a").commit());
+    await assertFails(request(pending, "pending-a").commit());
+    await assertFails(request(owner, "owner-a", requestUpdates("owner-a", "")).commit());
+    await assertFails(request(owner, "owner-a", requestUpdates("owner-a", "x".repeat(2001))).commit());
+    await assertFails(request(owner, "owner-a", { ...requestUpdates(), amount: 1 }).commit());
+    await assertFails(request(owner, "owner-a", requestUpdates(), { after: { status: "approved" } }).commit());
+    await assertFails(owner.doc("transactions/evidence-a").update({
+      status: "needs_evidence", ...requestUpdates(), updatedAt: serverTimestamp(), auditLogId: "missing",
+    }));
+    await seedTransaction("owner-own", { createdBy: "owner-a" });
+    await assertFails(evidenceBatch(owner, "owner-a", "owner-own", "transaction-evidence-requested", "pending", "needs_evidence", requestUpdates()).commit());
+    await assertSucceeds(request(owner, "owner-a").commit());
+    await assertFails(request(owner, "owner-a").commit());
+    await assertFails(other.doc("transactions/evidence-a").get());
+    const submit = (firestore, uid, updates = submitUpdates()) =>
+      evidenceBatch(firestore, uid, "evidence-a", "transaction-evidence-submitted", "needs_evidence", "pending", updates);
+    await assertFails(submit(other, "staff-b").commit());
+    await assertFails(submit(guest, "guest-a").commit());
+    await assertFails(submit(pending, "pending-a").commit());
+    await assertFails(submit(staff, "staff-a", submitUpdates([])).commit());
+    await assertFails(submit(staff, "staff-a", submitUpdates(["invalid"])).commit());
+    await assertFails(submit(staff, "staff-a", { ...submitUpdates(), amount: 2 }).commit());
+    await assertFails(submit(staff, "staff-a", { ...submitUpdates(), note: "แก้ไข" }).commit());
+    await assertFails(staff.doc("transactions/evidence-a").update({
+      ...submitUpdates(), status: "pending", updatedAt: serverTimestamp(), auditLogId: "missing",
+    }));
+    await assertSucceeds(submit(staff, "staff-a").commit());
+    await assertFails(submit(staff, "staff-a").commit());
+    await assertSucceeds(request(owner, "owner-a").commit());
+    await assertFails(evidenceBatch(staff, "staff-a", "evidence-a", "transaction-evidence-request-cancelled", "needs_evidence", "pending", {}).commit());
+    await assertFails(evidenceBatch(guest, "guest-a", "evidence-a", "transaction-evidence-request-cancelled", "needs_evidence", "pending", {}).commit());
+    await assertFails(evidenceBatch(pending, "pending-a", "evidence-a", "transaction-evidence-request-cancelled", "needs_evidence", "pending", {}).commit());
+    await assertFails(evidenceBatch(owner, "owner-a", "evidence-a", "transaction-evidence-request-cancelled", "needs_evidence", "pending", { amount: 1 }).commit());
+    await assertSucceeds(evidenceBatch(owner, "owner-a", "evidence-a", "transaction-evidence-request-cancelled", "needs_evidence", "pending", {}).commit());
+    await assertSucceeds(evidenceBatch(owner, "owner-a", "evidence-a", "transaction-status-changed", "pending", "approved", {
+      reviewedBy: "owner-a", reviewedByName: "ผู้ตรวจสอบ", reviewedAt: serverTimestamp(),
+      reviewNote: null, approvalSignatureURL: "data:image/png;base64,AAAA",
+    }).commit());
+  });
+
+  test("needs-evidence transactions cannot be approved but can be rejected or voided", async () => {
+    const owner = testEnv.authenticatedContext("owner-a").firestore();
+    const review = (id, status) => evidenceBatch(owner, "owner-a", id, "transaction-status-changed", "needs_evidence", status, {
+      reviewedBy: "owner-a", reviewedByName: "ผู้ตรวจสอบ", reviewedAt: serverTimestamp(),
+      reviewNote: null, ...(status === "approved" ? { approvalSignatureURL: "data:image/png;base64,AAAA" } : {}),
+    });
+    for (const status of ["approved", "rejected", "voided"]) {
+      const id = `review-${status}`;
+      await seedTransaction(id, { status: "needs_evidence" });
+      if (status === "approved") await assertFails(review(id, status).commit());
+      else await assertSucceeds(review(id, status).commit());
+    }
+    await seedTransaction("oversize", {
+      status: "needs_evidence", changePhotoURL: `data:image/jpeg;base64,${"A".repeat(174000)}`,
+      approvalSignatureURL: `data:image/png;base64,${"A".repeat(99000)}`,
+    });
+    const largePhoto = `data:image/jpeg;base64,${"A".repeat(174000)}`;
+    await assertFails(evidenceBatch(testEnv.authenticatedContext("staff-a").firestore(), "staff-a", "oversize",
+      "transaction-evidence-submitted", "needs_evidence", "pending", submitUpdates([largePhoto, largePhoto, largePhoto])).commit());
+    await seedTransaction("already-approved", { status: "approved" });
+    await assertFails(evidenceBatch(testEnv.authenticatedContext("staff-a").firestore(), "staff-a", "already-approved",
+      "transaction-evidence-submitted", "needs_evidence", "pending", submitUpdates()).commit());
+    await seedTransaction("owner-submits", { status: "needs_evidence", createdBy: "owner-a" });
+    await assertSucceeds(evidenceBatch(owner, "owner-a", "owner-submits",
+      "transaction-evidence-submitted", "needs_evidence", "pending", submitUpdates()).commit());
   });
 
   test("owner approves a transaction atomically with its audit log", async () => {
@@ -352,8 +571,9 @@ describe("Firestore rules", { concurrency: false }, () => {
 
   test("audit logs cannot be edited or deleted", async () => {
     await testEnv.withSecurityRulesDisabled(async (context) => {
-      await context.firestore().doc("auditLogs/old-entry").set({ action: "old" });
-      await context.firestore().doc("activityLogs/old-entry").set({ action: "old" });
+      const firestore = context.firestore();
+      await firestore.doc("auditLogs/old-entry").set({ action: "old" });
+      await firestore.doc("activityLogs/old-entry").set({ action: "old" });
     });
     const firestore = testEnv.authenticatedContext("owner-a").firestore();
     await assertFails(firestore.doc("auditLogs/old-entry").update({ action: "changed" }));
@@ -409,5 +629,168 @@ describe("Firestore rules", { concurrency: false }, () => {
     await assertFails(guest.doc("dailyClosings/fund-a_2026-11-07_r1").get());
     await assertFails(owner.doc("dailyClosings/client-write").set(closing));
     await assertFails(staff.doc("dailyClosings/client-write").set(closing));
+  });
+
+  test("scoped fund reads and per-fund equality and in queries", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await db.doc("users/staff-a").update({ fundIds: ["fund-a"] });
+      await db.doc("users/staff-b").update({ fundIds: ["fund-a", "fund-b"] });
+      await db.doc("users/owner-a").update({ fundIds: [] });
+      await db.doc("users/guest-a").update({ fundIds: ["fund-a"] });
+      await db.doc("funds/fund-b").set({ label: "อื่น", openingBalance: 100 });
+      await db.doc("fundTopups/a").set({ fundId: "fund-a", amount: 10 });
+      await db.doc("fundTopups/b").set({ fundId: "fund-b", amount: 10 });
+      await db.doc("transactions/b").set(transactionData({ fundId: "fund-b", status: "approved" }));
+      await db.doc("transactions/own-a").set(transactionData({ status: "pending" }));
+      await db.doc("transactions/own-a-evidence").set(transactionData({ status: "needs_evidence" }));
+      await db.doc("transactions/own-b-evidence").set(transactionData({ fundId: "fund-b", status: "needs_evidence" }));
+      await db.doc("transactions/own-b-pending").set(transactionData({ fundId: "fund-b" }));
+    });
+    const staff = testEnv.authenticatedContext("staff-a").firestore();
+    const guest = testEnv.authenticatedContext("guest-a").firestore();
+    const both = testEnv.authenticatedContext("staff-b").firestore();
+    const owner = testEnv.authenticatedContext("owner-a").firestore();
+    await assertSucceeds(staff.doc("funds/fund-a").get());
+    await assertFails(staff.doc("funds/fund-b").get());
+    await assertSucceeds(staff.doc("fundTopups/a").get());
+    await assertFails(staff.doc("fundTopups/b").get());
+    await assertSucceeds(staff.doc("transactions/approved-a").get());
+    await assertSucceeds(staff.doc("transactions/own-a").get());
+    await assertFails(staff.doc("transactions/b").get());
+    await assertFails(staff.doc("transactions/write-b").set(transactionData({ fundId: "fund-b" })));
+    await assertSucceeds(staff.doc("transactions/write-a").set(transactionData()));
+    await assertSucceeds(staff.doc("transactions/own-a").update({
+      amount: 130,
+      updatedAt: serverTimestamp(),
+      editHistory: [{ editedBy: "staff-a", reason: "แก้ไข" }],
+    }));
+    await assertSucceeds(evidenceBatch(staff, "staff-a", "own-a-evidence", "transaction-evidence-submitted",
+      "needs_evidence", "pending", submitUpdates()).commit());
+    await assertFails(staff.collection("funds").get());
+    await assertFails(staff.collection("transactions").where("status", "==", "approved").get());
+    await assertFails(staff.collection("fundTopups").get());
+    await assertSucceeds(staff.collection("fundTopups").where("fundId", "==", "fund-a").get());
+    await assertSucceeds(staff.collection("fundTopups").where("fundId", "in", ["fund-a"]).get());
+    await assertSucceeds(staff.collection("transactions").where("fundId", "==", "fund-a").where("status", "==", "approved").get());
+    await assertSucceeds(staff.collection("transactions").where("fundId", "==", "fund-a").where("createdBy", "==", "staff-a").get());
+    await assertSucceeds(staff.collection("transactions").where("fundId", "in", ["fund-a"]).where("status", "==", "approved").get());
+    await assertFails(staff.collection("transactions").where("fundId", "in", ["fund-a", "fund-b"]).where("status", "==", "approved").get());
+    await assertSucceeds(both.collection("transactions").where("fundId", "in", ["fund-a", "fund-b"]).where("status", "==", "approved").get());
+    await assertSucceeds(both.collection("fundTopups").where("fundId", "in", ["fund-a", "fund-b"]).get());
+    await assertFails(evidenceBatch(staff, "staff-a", "own-b-evidence", "transaction-evidence-submitted",
+      "needs_evidence", "pending", submitUpdates()).commit());
+    await assertFails(staff.doc("transactions/own-b-pending").update({
+      amount: 130,
+      updatedAt: serverTimestamp(),
+      editHistory: [{ editedBy: "staff-a", reason: "แก้ไข" }],
+    }));
+    await assertSucceeds(guest.doc("transactions/approved-a").get());
+    await assertFails(guest.doc("transactions/b").get());
+    await assertSucceeds(owner.doc("transactions/b").get());
+    await assertSucceeds(owner.collection("funds").get());
+    await assertSucceeds(owner.doc("transactions/b").update({
+      amount: 130,
+      updatedAt: serverTimestamp(),
+      editHistory: [{ editedBy: "owner-a", reason: "แก้ไข" }],
+    }));
+  });
+
+  test("legacy and empty fund assignments retain distinct access", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await db.doc("funds/fund-b").set({ label: "B", openingBalance: 0 });
+      await db.doc("users/staff-b").update({ fundIds: [] });
+      await db.doc("users/guest-a").update({ fundIds: [] });
+    });
+
+    const legacy = testEnv.authenticatedContext("staff-a").firestore();
+    const emptyStaff = testEnv.authenticatedContext("staff-b").firestore();
+    const emptyGuest = testEnv.authenticatedContext("guest-a").firestore();
+    await assertSucceeds(legacy.doc("funds/fund-b").get());
+    await assertSucceeds(legacy.collection("funds").get());
+    await assertSucceeds(legacy.collection("transactions").where("status", "==", "approved").get());
+    await assertFails(emptyStaff.doc("funds/fund-a").get());
+    await assertFails(emptyStaff.doc("transactions/approved-a").get());
+    await assertFails(emptyStaff.doc("transactions/own").set(transactionData({ createdBy: "staff-b" })));
+    await assertFails(emptyGuest.doc("funds/fund-a").get());
+    await assertFails(emptyGuest.doc("transactions/approved-a").get());
+  });
+
+  test("staff assigned 30 funds can still create, edit and submit evidence", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await db.doc("users/staff-a").update({
+        fundIds: ["fund-a", ...Array.from({ length: 29 }, (_, index) => `other-${index}`)],
+      });
+      await db.doc("transactions/max-pending").set(transactionData());
+      await db.doc("transactions/max-evidence").set(transactionData({ status: "needs_evidence" }));
+    });
+    const staff = testEnv.authenticatedContext("staff-a").firestore();
+    await assertSucceeds(staff.doc("transactions/max-create").set(transactionData()));
+    await assertSucceeds(staff.doc("transactions/max-pending").update({
+      amount: 130,
+      updatedAt: serverTimestamp(),
+      editHistory: [{ editedBy: "staff-a", reason: "แก้ไข" }],
+    }));
+    await assertSucceeds(evidenceBatch(staff, "staff-a", "max-evidence", "transaction-evidence-submitted",
+      "needs_evidence", "pending", submitUpdates()).commit());
+  });
+
+  test("only owner may change another user's fund access with a matching audit", async () => {
+    function accessBatch(db, uid, updates, before, after, withAudit = true) {
+      const batch = db.batch();
+      const audit = db.collection("auditLogs").doc();
+      const entry = {
+        actorUid: uid, actorName: "ทดสอบ", action: "user-access-changed",
+        targetCollection: "users", targetId: "staff-a", before, after, createdAt: serverTimestamp(),
+      };
+      batch.update(db.doc("users/staff-a"), { ...updates, auditLogId: audit.id });
+      if (withAudit) {
+        batch.set(audit, entry);
+        batch.set(db.doc(`activityLogs/${audit.id}`), entry);
+      }
+      return batch;
+    }
+    const owner = testEnv.authenticatedContext("owner-a").firestore();
+    const staff = testEnv.authenticatedContext("staff-a").firestore();
+    const before = { fundIds: null, roleLabel: null };
+    const after = { fundIds: ["fund-a"], roleLabel: "หน้าร้าน" };
+    await assertFails(accessBatch(owner, "owner-a", after, before, after, false).commit());
+    await assertFails(accessBatch(owner, "owner-a", after, before, { ...after, roleLabel: "ผิด" }).commit());
+    await assertFails(accessBatch(staff, "staff-a", after, before, after).commit());
+    await assertFails(accessBatch(owner, "owner-a", { fundIds: [4], roleLabel: "" }, before, { fundIds: [4], roleLabel: "" }).commit());
+    await assertFails(accessBatch(owner, "owner-a", { fundIds: "fund-a", roleLabel: "" }, before, { fundIds: "fund-a", roleLabel: "" }).commit());
+    await assertFails(accessBatch(owner, "owner-a", { fundIds: ["fund-a"], roleLabel: "a".repeat(101) }, before,
+      { fundIds: ["fund-a"], roleLabel: "a".repeat(101) }).commit());
+    const tooMany = Array.from({ length: 31 }, (_, index) => `fund-${index}`);
+    await assertFails(accessBatch(owner, "owner-a", { fundIds: tooMany, roleLabel: "" }, before, { fundIds: tooMany, roleLabel: "" }).commit());
+    await assertSucceeds(accessBatch(owner, "owner-a", after, before, after).commit());
+    const thirty = Array.from({ length: 30 }, (_, index) => `fund-${index}`);
+    await assertSucceeds(accessBatch(owner, "owner-a", { fundIds: thirty, roleLabel: "" }, after, { fundIds: thirty, roleLabel: "" }).commit());
+  });
+
+  test("owner can create a scoped user with matching access audit while legacy creation still works", async () => {
+    const db = testEnv.authenticatedContext("owner-a").firestore();
+    function createUser(id, access, auditAfter) {
+      const batch = db.batch();
+      const audit = db.collection("auditLogs").doc();
+      const entry = {
+        actorUid: "owner-a", actorName: "เจ้าของ", action: "user-created",
+        targetCollection: "users", targetId: id, before: null, after: auditAfter, createdAt: serverTimestamp(),
+      };
+      batch.set(db.doc(`users/${id}`), {
+        name: "พนักงานใหม่", username: id, role: "staff", disabled: false,
+        createdAt: serverTimestamp(), createdByOwner: "owner-a", auditLogId: audit.id, ...access,
+      });
+      batch.set(db.doc(`pinDirectory/${id}`), { uid: id, email: `${id}@example.invalid` });
+      batch.set(audit, entry);
+      batch.set(db.doc(`activityLogs/${audit.id}`), entry);
+      return batch;
+    }
+    const access = { fundIds: ["fund-a"], roleLabel: "พนักงาน" };
+    await assertFails(createUser("bad.new", access, { role: "staff", disabled: false }).commit());
+    await assertSucceeds(createUser("scoped.new", access, { role: "staff", disabled: false, ...access }).commit());
+    await assertSucceeds(createUser("legacy.new", {}, { role: "staff", disabled: false }).commit());
   });
 });

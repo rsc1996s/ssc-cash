@@ -7,7 +7,7 @@ import {
   toCents,
   validateBusinessDate,
 } from "../netlify/functions/domain.mjs";
-import handler from "../netlify/functions/close-daily-fund.mjs";
+import handler, { closeFund } from "../netlify/functions/close-daily-fund.mjs";
 
 test("cash balance includes opening balance, topups, and approved cash transactions only", () => {
   const asOf = new Date("2026-11-07T04:00:00.000Z");
@@ -52,4 +52,39 @@ test("Netlify endpoint rejects other methods and requests without a Firebase tok
 
   assert.equal(getResponse.status, 405);
   assert.equal(unauthenticatedResponse.status, 401);
+});
+
+test("daily closing enforces staff fund assignments without changing legacy or owner access", async () => {
+  const now = new Date("2026-11-07T04:00:00.000Z");
+  const input = { fundId: "fund-a", countedCash: 100, reason: "", businessDate: "2026-11-07" };
+  function fakeDb(profile) {
+    const docs = {
+      "users/staff": { exists: true, data: () => profile },
+      "funds/fund-a": { exists: true, id: "fund-a", data: () => ({ label: "A", openingBalance: 100 }) },
+    };
+    const transaction = {
+      get: async (ref) => docs[ref.path] || { docs: [] },
+      create: () => {},
+    };
+    return {
+      doc: (path) => ({ path }),
+      collection: (path) => ({
+        path,
+        where() { return this; },
+      }),
+      runTransaction: (callback) => callback(transaction),
+    };
+  }
+  await assert.rejects(closeFund(fakeDb({ role: "staff", fundIds: ["fund-b"] }), "staff", input, now),
+    (error) => error.status === 403);
+  await assert.rejects(closeFund(fakeDb({ role: "staff", fundIds: [] }), "staff", input, now),
+    (error) => error.status === 403);
+  for (const profile of [
+    { role: "staff", fundIds: ["fund-a"] },
+    { role: "staff" },
+    { role: "owner", fundIds: [] },
+  ]) {
+    const result = await closeFund(fakeDb(profile), "staff", input, now);
+    assert.equal(result.fundId, "fund-a");
+  }
 });

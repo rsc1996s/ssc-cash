@@ -1,0 +1,1 @@
+function u(e){return(e||[]).reduce((n,r)=>n+(Number(r.amount)||0),0)}function t(e,n){return n.filter(r=>r.linkedWithdrawalRequestId===e).reduce((r,i)=>r+u(i.lines),0)}function o(e,n){return typeof e.receivedAmount!="number"||!Number.isFinite(e.receivedAmount)?null:e.receivedAmount-t(e.id,n)}function c(e){return e.map((n,r)=>({...n,lineNo:r+1}))}export{c as a,u as l,o as r,t};

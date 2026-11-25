@@ -1,0 +1,1 @@
+import{j as s}from"./index-To818-Cb.js";function d({className:r="",children:e,...o}){return s.jsx("div",{className:`rounded-xl border border-paperLine bg-white shadow-sm ${r}`,...o,children:e})}export{d as C};

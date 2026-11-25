@@ -1,0 +1,1 @@
+function e(n,r){return!n||n.disabled===!0?!1:n.role==="owner"?!0:!["staff","guest"].includes(n.role)||typeof r!="string"?!1:Object.hasOwn(n,"fundIds")?Array.isArray(n.fundIds)&&n.fundIds.includes(r):!0}export{e as c};

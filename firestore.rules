@@ -59,6 +59,50 @@ service cloud.firestore {
       return hasAnyRole(['owner', 'staff', 'guest']);
     }
 
+    function canAccessFund(fundId) {
+      return isOwner() ||
+        (hasAnyRole(['staff', 'guest']) &&
+          (!profile().keys().hasAny(['fundIds']) ||
+            (profile().get('fundIds', null) is list &&
+              fundId in profile().fundIds)));
+    }
+
+    function validFundIdAt(ids, index) {
+      return ids.size() <= index || ids[index] is string;
+    }
+
+    function validFundIds(ids) {
+      return ids is list && ids.size() <= 30 &&
+        validFundIdAt(ids, 0) && validFundIdAt(ids, 1) &&
+        validFundIdAt(ids, 2) && validFundIdAt(ids, 3) &&
+        validFundIdAt(ids, 4) && validFundIdAt(ids, 5) &&
+        validFundIdAt(ids, 6) && validFundIdAt(ids, 7) &&
+        validFundIdAt(ids, 8) && validFundIdAt(ids, 9) &&
+        validFundIdAt(ids, 10) && validFundIdAt(ids, 11) &&
+        validFundIdAt(ids, 12) && validFundIdAt(ids, 13) &&
+        validFundIdAt(ids, 14) && validFundIdAt(ids, 15) &&
+        validFundIdAt(ids, 16) && validFundIdAt(ids, 17) &&
+        validFundIdAt(ids, 18) && validFundIdAt(ids, 19) &&
+        validFundIdAt(ids, 20) && validFundIdAt(ids, 21) &&
+        validFundIdAt(ids, 22) && validFundIdAt(ids, 23) &&
+        validFundIdAt(ids, 24) && validFundIdAt(ids, 25) &&
+        validFundIdAt(ids, 26) && validFundIdAt(ids, 27) &&
+        validFundIdAt(ids, 28) && validFundIdAt(ids, 29);
+    }
+
+    function validUserAccess(data) {
+      return (!data.keys().hasAny(['fundIds']) || validFundIds(data.fundIds)) &&
+        (!data.keys().hasAny(['roleLabel']) ||
+          (data.roleLabel is string && data.roleLabel.size() <= 100));
+    }
+
+    function userAccess(data) {
+      return {
+        'fundIds': data.get('fundIds', null),
+        'roleLabel': data.get('roleLabel', null)
+      };
+    }
+
     function validUsername(username) {
       return username is string &&
         username.matches('^[a-z][a-z0-9._-]{2,23}$');
@@ -120,31 +164,34 @@ service cloud.firestore {
 
     function validPhotoData(data) {
       let photos = data.receiptPhotoURLs;
-      let receiptSize = photos[0].size() +
+      let receiptSize = (photos.size() > 0 && photos[0] is string ? photos[0].size() : 0) +
         (photos.size() > 1 ? photos[1].size() : 0) +
         (photos.size() > 2 ? photos[2].size() : 0);
-      let changeSize = data.changePhotoURL is string ? data.changePhotoURL.size() : 0;
+      let changePhoto = data.get('changePhotoURL', null);
+      let changeSize = changePhoto is string ? changePhoto.size() : 0;
       let signatureSize = data.keys().hasAny(['approvalSignatureURL']) &&
         data.approvalSignatureURL is string ? data.approvalSignatureURL.size() : 0;
       return photos is list &&
-        photos.size() >= 1 && photos.size() <= 3 &&
-        photos[0] is string &&
-        photos[0].matches('^data:image/(jpeg|png);base64,[A-Za-z0-9+/=]+$') &&
-        photos[0].size() <= 175000 &&
+        photos.size() <= 3 &&
+        (photos.size() == 0 ? data.receiptPhotoURL == null : (
+          photos[0] is string &&
+          photos[0].matches('^data:image/(jpeg|png);base64,[A-Za-z0-9+/=]+$') &&
+          photos[0].size() <= 175000 &&
+          data.receiptPhotoURL == photos[0])) &&
         (photos.size() < 2 || (photos[1] is string &&
           photos[1].matches('^data:image/(jpeg|png);base64,[A-Za-z0-9+/=]+$') &&
           photos[1].size() <= 175000)) &&
         (photos.size() < 3 || (photos[2] is string &&
           photos[2].matches('^data:image/(jpeg|png);base64,[A-Za-z0-9+/=]+$') &&
           photos[2].size() <= 175000)) &&
-        data.receiptPhotoURL == photos[0] &&
-        (data.changePhotoURL == null || (data.changePhotoURL is string &&
-          data.changePhotoURL.matches('^data:image/(jpeg|png);base64,[A-Za-z0-9+/=]+$') &&
+        (changePhoto == null || (changePhoto is string &&
+          changePhoto.matches('^data:image/(jpeg|png);base64,[A-Za-z0-9+/=]+$') &&
           changeSize <= 175000)) &&
         (signatureSize == 0 || (data.approvalSignatureURL is string &&
           data.approvalSignatureURL.matches('^data:image/(jpeg|png);base64,[A-Za-z0-9+/=]+$') &&
           signatureSize <= 100000)) &&
-        data.receiptPhotoURL.size() + receiptSize + changeSize + signatureSize <= 900000;
+        (data.receiptPhotoURL is string ? data.receiptPhotoURL.size() : 0) +
+          receiptSize + changeSize + signatureSize <= 900000;
     }
 
     function validTransaction(data) {
@@ -215,7 +262,7 @@ service cloud.firestore {
       return data.keys().hasOnly([
           'requestNo', 'sourceAccountId', 'sourceAccountLabel', 'date', 'note',
           'lines', 'totalAmount', 'createdAt', 'createdBy', 'createdByName',
-          'updatedAt'
+          'updatedAt', 'originAccountId', 'originAccountLabel', 'receivedAmount', 'auditLogId'
         ]) &&
         data.keys().hasAll([
           'requestNo', 'sourceAccountId', 'sourceAccountLabel', 'date', 'note',
@@ -231,7 +278,14 @@ service cloud.firestore {
         data.lines is list && data.lines.size() > 0 &&
         data.totalAmount is number && data.totalAmount >= 0 &&
         data.totalAmount <= 1000000000 &&
-        data.createdAt == request.time &&
+        (!data.keys().hasAny(['originAccountId', 'originAccountLabel']) ||
+          (data.keys().hasAll(['originAccountId', 'originAccountLabel']) &&
+            data.originAccountId is string &&
+            exists(/databases/$(database)/documents/bankAccounts/$(data.originAccountId)) &&
+            get(/databases/$(database)/documents/bankAccounts/$(data.originAccountId)).data.side == 'origin' &&
+            data.originAccountLabel is string && data.originAccountLabel.size() <= 300)) &&
+        (!data.keys().hasAny(['receivedAmount']) || validNonNegativeAmount(data.receivedAmount)) &&
+        data.createdAt is timestamp &&
         data.createdBy is string &&
         data.createdByName is string && data.createdByName.size() <= 200 &&
         data.updatedAt == request.time;
@@ -284,7 +338,13 @@ service cloud.firestore {
       let after = request.resource.data.after;
       let oldTx = get(/databases/$(database)/documents/transactions/$(targetId)).data;
       let newTx = getAfter(/databases/$(database)/documents/transactions/$(targetId)).data;
-      return request.resource.data.action == 'transaction-status-changed' &&
+      let action = request.resource.data.action;
+      return (
+          action == 'transaction-status-changed' ||
+          (action == 'transaction-evidence-requested' && oldTx.status == 'pending' && newTx.status == 'needs_evidence') ||
+          (action in ['transaction-evidence-submitted', 'transaction-evidence-request-cancelled'] &&
+            oldTx.status == 'needs_evidence' && newTx.status == 'pending')
+        ) &&
         request.resource.data.targetCollection == 'transactions' &&
         before == { 'status': oldTx.status } &&
         after == { 'status': newTx.status } &&
@@ -299,18 +359,29 @@ service cloud.firestore {
       let newUser = getAfter(profilePath(targetId)).data;
       return request.resource.data.targetCollection == 'users' &&
         newUser.auditLogId == auditId &&
-        after == { 'role': newUser.role, 'disabled': newUser.disabled == true } &&
         (
           (request.resource.data.action == 'user-created' &&
             !exists(profilePath(targetId)) &&
-            before == null)
+            before == null &&
+            after == (newUser.keys().hasAny(['fundIds', 'roleLabel'])
+              ? { 'role': newUser.role, 'disabled': newUser.disabled == true,
+                  'fundIds': newUser.get('fundIds', null),
+                  'roleLabel': newUser.get('roleLabel', null) }
+              : { 'role': newUser.role, 'disabled': newUser.disabled == true }))
           ||
           (request.resource.data.action in ['role-changed', 'user-disabled', 'user-enabled'] &&
             exists(profilePath(targetId)) &&
+            after == { 'role': newUser.role, 'disabled': newUser.disabled == true } &&
             before == {
               'role': get(profilePath(targetId)).data.role,
               'disabled': get(profilePath(targetId)).data.get('disabled', false) == true
             } &&
+            before != after)
+          ||
+          (request.resource.data.action == 'user-access-changed' &&
+            exists(profilePath(targetId)) &&
+            before == userAccess(get(profilePath(targetId)).data) &&
+            after == userAccess(newUser) &&
             before != after)
         );
     }
@@ -363,6 +434,19 @@ service cloud.firestore {
         !existsAfter(targetPath) &&
         request.resource.data.before == get(targetPath).data &&
         request.resource.data.after == null;
+    }
+
+    function validWithdrawalReceivedAudit(auditId) {
+      let targetId = request.resource.data.targetId;
+      let targetPath = /databases/$(database)/documents/withdrawalRequests/$(targetId);
+      let before = get(targetPath).data;
+      let after = getAfter(targetPath).data;
+      return isOwner() &&
+        request.resource.data.targetCollection == 'withdrawalRequests' &&
+        after.auditLogId == auditId &&
+        request.resource.data.before == { 'receivedAmount': before.get('receivedAmount', null) } &&
+        request.resource.data.after == { 'receivedAmount': after.receivedAmount } &&
+        before.get('receivedAmount', null) != after.receivedAmount;
     }
 
     function validPaymentDeleteAudit(auditId) {
@@ -418,7 +502,7 @@ service cloud.firestore {
       allow create: if isSignedIn() &&
         request.resource.data.keys().hasOnly([
           'name', 'username', 'role', 'disabled', 'createdAt',
-          'createdByOwner', 'auditLogId'
+          'createdByOwner', 'auditLogId', 'fundIds', 'roleLabel'
         ]) &&
         request.resource.data.keys().hasAll(['name', 'username', 'role', 'createdAt']) &&
         request.resource.data.name is string &&
@@ -427,6 +511,9 @@ service cloud.firestore {
         validUsername(request.resource.data.username) &&
         request.resource.data.createdAt == request.time &&
         (!request.resource.data.keys().hasAny(['disabled']) || request.resource.data.disabled == false) &&
+        validUserAccess(request.resource.data) &&
+        (!request.resource.data.keys().hasAny(['fundIds', 'roleLabel']) ||
+          (isOwner() && request.resource.data.role in ['staff', 'guest'])) &&
         existsAfter(/databases/$(database)/documents/pinDirectory/$(request.resource.data.username)) &&
         getAfter(/databases/$(database)/documents/pinDirectory/$(request.resource.data.username)).data.uid == userId &&
         (
@@ -450,7 +537,11 @@ service cloud.firestore {
               'users',
               userId,
               null,
-              { 'role': request.resource.data.role, 'disabled': false }
+              request.resource.data.keys().hasAny(['fundIds', 'roleLabel'])
+                ? { 'role': request.resource.data.role, 'disabled': false,
+                    'fundIds': request.resource.data.get('fundIds', null),
+                    'roleLabel': request.resource.data.get('roleLabel', null) }
+                : { 'role': request.resource.data.role, 'disabled': false }
             ) &&
             (request.resource.data.role != 'owner' ||
               (get(setupPath()).data.ownerCount is int &&
@@ -461,6 +552,17 @@ service cloud.firestore {
       allow get: if isSignedIn() &&
         (request.auth.uid == userId || isOwner());
       allow list: if isOwner();
+
+      allow update: if isOwner() &&
+        request.auth.uid != userId &&
+        resource.data.role in ['staff', 'guest'] &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'fundIds', 'roleLabel', 'auditLogId'
+        ]) &&
+        validUserAccess(request.resource.data) &&
+        userAccess(resource.data) != userAccess(request.resource.data) &&
+        auditMatches(request.resource.data.auditLogId, 'user-access-changed',
+          'users', userId, userAccess(resource.data), userAccess(request.resource.data));
 
       allow update: if isOwner() &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
@@ -513,16 +615,37 @@ service cloud.firestore {
     match /transactions/{txId} {
       allow create: if isApprovedUser() &&
         request.resource.data.createdBy == request.auth.uid &&
+        canAccessFund(request.resource.data.fundId) &&
         validTransaction(request.resource.data);
 
       allow read: if canReadCash() &&
         (isOwner() ||
-          resource.data.createdBy == request.auth.uid ||
-          resource.data.status == 'approved');
+          (canAccessFund(resource.data.fundId) &&
+            (resource.data.createdBy == request.auth.uid ||
+              resource.data.status == 'approved')));
 
-      allow update: if isOwner() &&
-          resource.data.status == 'pending' &&
+      allow update: if
+        (resource.data.status == 'pending' &&
+          request.resource.data.status == 'pending' &&
+          resource.data.createdBy == request.auth.uid &&
+          isStaff() &&
+          canAccessFund(resource.data.fundId) &&
+          request.resource.data.createdBy == resource.data.createdBy &&
+          request.resource.data.createdAt == resource.data.createdAt &&
+          request.resource.data.fundId == resource.data.fundId &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'amount', 'withdrawnAmount', 'itemDescription', 'changeAmount',
+            'paymentMethod', 'note', 'updatedAt', 'editHistory'
+          ]) &&
+          request.resource.data.updatedAt == request.time &&
+          validEditableTransactionFields() &&
+          validTransactionEditHistory())
+        ||
+        ((resource.data.status == 'pending' ||
+            (resource.data.status == 'needs_evidence' &&
+              request.resource.data.status in ['rejected', 'voided'])) &&
           request.resource.data.status in ['approved', 'rejected', 'voided'] &&
+          isOwner() &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'status', 'reviewedBy', 'reviewedByName', 'reviewedAt',
             'reviewNote', 'approvalSignatureURL', 'updatedAt', 'auditLogId'
@@ -547,25 +670,57 @@ service cloud.firestore {
             txId,
             { 'status': resource.data.status },
             { 'status': request.resource.data.status }
-          )
+          ))
         ||
-        (isOwner() &&
-          request.resource.data.status == resource.data.status &&
-          request.resource.data.createdBy == resource.data.createdBy &&
-          request.resource.data.createdAt == resource.data.createdAt &&
-          request.resource.data.fundId == resource.data.fundId &&
+        (resource.data.status == 'pending' &&
+          request.resource.data.status == 'needs_evidence' &&
+          resource.data.createdBy != request.auth.uid &&
+          isOwner() &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'amount', 'withdrawnAmount', 'itemDescription', 'changeAmount',
-            'paymentMethod', 'note', 'updatedAt', 'editHistory'
+            'status', 'evidenceRequestedBy', 'evidenceRequestedByName',
+            'evidenceRequestedAt', 'evidenceRequestNote', 'updatedAt', 'auditLogId'
+          ]) &&
+          request.resource.data.evidenceRequestedBy == request.auth.uid &&
+          request.resource.data.evidenceRequestedByName is string &&
+          request.resource.data.evidenceRequestedByName.size() <= 200 &&
+          request.resource.data.evidenceRequestedAt == request.time &&
+          request.resource.data.evidenceRequestNote is string &&
+          request.resource.data.evidenceRequestNote.size() > 0 &&
+          request.resource.data.evidenceRequestNote.size() <= 2000 &&
+          request.resource.data.evidenceRequestNote.matches('(?s).*[^ ].*') &&
+          request.resource.data.updatedAt == request.time &&
+          auditMatches(request.resource.data.auditLogId, 'transaction-evidence-requested',
+            'transactions', txId, { 'status': 'pending' }, { 'status': 'needs_evidence' }))
+        ||
+        (resource.data.status == 'needs_evidence' &&
+          request.resource.data.status == 'pending' &&
+          resource.data.createdBy == request.auth.uid &&
+          isApprovedUser() &&
+          canAccessFund(resource.data.fundId) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'receiptPhotoURL', 'receiptPhotoURLs',
+            'evidenceSubmittedAt', 'updatedAt', 'auditLogId'
+          ]) &&
+          request.resource.data.receiptPhotoURLs is list &&
+          request.resource.data.receiptPhotoURLs.size() > 0 &&
+          validPhotoData(request.resource.data) &&
+          request.resource.data.evidenceSubmittedAt == request.time &&
+          request.resource.data.updatedAt == request.time &&
+          auditMatches(request.resource.data.auditLogId, 'transaction-evidence-submitted',
+            'transactions', txId, { 'status': 'needs_evidence' }, { 'status': 'pending' }))
+        ||
+        (resource.data.status == 'needs_evidence' &&
+          request.resource.data.status == 'pending' &&
+          isOwner() &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'updatedAt', 'auditLogId'
           ]) &&
           request.resource.data.updatedAt == request.time &&
-          validEditableTransactionFields() &&
-          validTransactionEditHistory())
+          auditMatches(request.resource.data.auditLogId, 'transaction-evidence-request-cancelled',
+            'transactions', txId, { 'status': 'needs_evidence' }, { 'status': 'pending' }))
         ||
-        (isStaff() &&
-          resource.data.createdBy == request.auth.uid &&
-          resource.data.status == 'pending' &&
-          request.resource.data.status == 'pending' &&
+        (request.resource.data.status == resource.data.status &&
+          isOwner() &&
           request.resource.data.createdBy == resource.data.createdBy &&
           request.resource.data.createdAt == resource.data.createdAt &&
           request.resource.data.fundId == resource.data.fundId &&
@@ -581,7 +736,7 @@ service cloud.firestore {
     }
 
     match /funds/{fundId} {
-      allow read: if canReadCash();
+      allow read: if canReadCash() && canAccessFund(fundId);
 
       allow create: if isOwner() &&
         request.resource.data.keys().hasOnly([
@@ -630,7 +785,7 @@ service cloud.firestore {
     }
 
     match /fundTopups/{topupId} {
-      allow read: if canReadCash();
+      allow read: if canReadCash() && canAccessFund(resource.data.fundId);
       allow create: if isOwner() &&
         request.resource.data.keys().hasOnly([
           'fundId', 'amount', 'note', 'createdBy', 'createdByName',
@@ -690,7 +845,7 @@ service cloud.firestore {
           'side', 'bankName', 'accountNumber', 'accountName', 'note',
           'createdAt', 'createdBy'
         ]) &&
-        request.resource.data.side in ['source', 'payee'] &&
+        request.resource.data.side in ['origin', 'source', 'payee'] &&
         request.resource.data.bankName is string &&
         request.resource.data.accountNumber is string &&
         request.resource.data.accountName is string &&
@@ -717,6 +872,7 @@ service cloud.firestore {
       allow read: if isApprovedUser();
       allow create: if isApprovedUser() &&
         request.resource.data.createdBy == request.auth.uid &&
+        !request.resource.data.keys().hasAny(['receivedAmount', 'auditLogId']) &&
         validWithdrawal(request.resource.data) &&
         request.resource.data.createdAt == request.time;
       allow update: if isOwner() &&
@@ -724,7 +880,7 @@ service cloud.firestore {
           request.resource.data.createdAt == resource.data.createdAt &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'sourceAccountId', 'sourceAccountLabel', 'date', 'note',
-            'lines', 'totalAmount', 'updatedAt'
+            'lines', 'totalAmount', 'updatedAt', 'originAccountId', 'originAccountLabel'
           ]) &&
           validWithdrawal(request.resource.data) &&
           request.resource.data.createdAt == resource.data.createdAt
@@ -735,10 +891,21 @@ service cloud.firestore {
           request.resource.data.createdAt == resource.data.createdAt &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'sourceAccountId', 'sourceAccountLabel', 'date', 'note',
-            'lines', 'totalAmount', 'updatedAt'
+            'lines', 'totalAmount', 'updatedAt', 'originAccountId', 'originAccountLabel'
           ]) &&
           validWithdrawal(request.resource.data) &&
-          request.resource.data.createdAt == resource.data.createdAt);
+          request.resource.data.createdAt == resource.data.createdAt)
+        ||
+        (isOwner() &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'receivedAmount', 'updatedAt', 'auditLogId'
+          ]) &&
+          validWithdrawal(request.resource.data) &&
+          resource.data.get('receivedAmount', null) != request.resource.data.receivedAmount &&
+          auditMatches(request.resource.data.auditLogId, 'withdrawal-received-changed',
+            'withdrawalRequests', requestId,
+            { 'receivedAmount': resource.data.get('receivedAmount', null) },
+            { 'receivedAmount': request.resource.data.receivedAmount }));
       allow delete: if (isOwner() ||
           (isStaff() && resource.data.createdBy == request.auth.uid)) &&
         existsAfter(auditPath('delete-withdrawal-' + requestId)) &&
@@ -816,11 +983,15 @@ service cloud.firestore {
       allow create: if isActiveUser() &&
         auditHasFields(request.resource.data) &&
         (
-          (request.resource.data.action == 'transaction-status-changed' &&
+          (request.resource.data.action in [
+              'transaction-status-changed', 'transaction-evidence-requested',
+              'transaction-evidence-submitted', 'transaction-evidence-request-cancelled'
+            ] &&
             validTransactionAudit(auditId))
           ||
           (request.resource.data.action in [
-              'user-created', 'role-changed', 'user-disabled', 'user-enabled'
+              'user-created', 'role-changed', 'user-disabled', 'user-enabled',
+              'user-access-changed'
             ] && validUserAudit(auditId))
           ||
           (request.resource.data.action in ['fund-created', 'fund-updated'] &&
@@ -831,6 +1002,9 @@ service cloud.firestore {
           ||
           (request.resource.data.action == 'withdrawal-deleted' &&
             validWithdrawalDeleteAudit(auditId))
+          ||
+          (request.resource.data.action == 'withdrawal-received-changed' &&
+            validWithdrawalReceivedAudit(auditId))
           ||
           (request.resource.data.action == 'transfer-payment-deleted' &&
             validPaymentDeleteAudit(auditId))
