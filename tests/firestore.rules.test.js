@@ -247,6 +247,41 @@ describe("Firestore rules", { concurrency: false }, () => {
     await assertFails(firestore.doc("transferPayments/payment-a").get());
   });
 
+  test("fund top-up dates are optional, not future, and bound to the audit", async () => {
+    const owner = testEnv.authenticatedContext("owner-a").firestore();
+    const staff = testEnv.authenticatedContext("staff-a").firestore();
+    const past = new Date("2020-01-01T17:00:00Z");
+    const future = new Date("2099-01-01T17:00:00Z");
+    const createTopup = (db, uid, id, fields = {}, auditAfter) => {
+      const batch = db.batch();
+      const audit = db.collection("auditLogs").doc();
+      const after = auditAfter ?? { fundId: "fund-a", amount: 25, ...fields };
+      const entry = {
+        actorUid: uid, actorName: "ทดสอบ", action: "fund-topup-created",
+        targetCollection: "fundTopups", targetId: id, before: null, after,
+        createdAt: serverTimestamp(),
+      };
+      batch.set(db.doc(`fundTopups/${id}`), {
+        fundId: "fund-a", amount: 25, note: "", createdBy: uid, createdByName: "ทดสอบ",
+        createdAt: serverTimestamp(), auditLogId: audit.id, ...fields,
+      });
+      batch.set(audit, entry);
+      batch.set(db.doc(`activityLogs/${audit.id}`), entry);
+      return batch.commit();
+    };
+    await assertSucceeds(createTopup(owner, "owner-a", "legacy"));
+    await assertSucceeds(createTopup(owner, "owner-a", "dated", { topupDate: past }));
+    await assertFails(createTopup(owner, "owner-a", "future", { topupDate: future }));
+    await assertFails(createTopup(owner, "owner-a", "wrong-type", { topupDate: "2020-01-02" }));
+    await assertFails(createTopup(owner, "owner-a", "wrong-audit", { topupDate: past }, { fundId: "fund-a", amount: 25 }));
+    await assertFails(createTopup(staff, "staff-a", "staff", { topupDate: past }));
+    await assertFails(owner.doc("fundTopups/no-audit").set({
+      fundId: "fund-a", amount: 25, note: "", createdBy: "owner-a", createdByName: "ทดสอบ",
+      createdAt: serverTimestamp(), topupDate: past, auditLogId: "missing",
+    }));
+    await assertFails(owner.doc("fundTopups/dated").update({ topupDate: past }));
+  });
+
   test("actual receipts require owner and a matching audit; legacy requests remain editable", async () => {
     const owner = testEnv.authenticatedContext("owner-a").firestore();
     const staff = testEnv.authenticatedContext("staff-a").firestore();
