@@ -409,6 +409,12 @@ service cloud.firestore {
         );
     }
 
+    function topupAuditFields(topup) {
+      return topup.keys().hasAny(['topupDate'])
+        ? { 'fundId': topup.fundId, 'amount': topup.amount, 'topupDate': topup.topupDate }
+        : { 'fundId': topup.fundId, 'amount': topup.amount };
+    }
+
     function validTopupAudit(auditId) {
       let targetId = request.resource.data.targetId;
       let topupPath = /databases/$(database)/documents/fundTopups/$(targetId);
@@ -418,10 +424,7 @@ service cloud.firestore {
         !exists(topupPath) &&
         topup.auditLogId == auditId &&
         request.resource.data.before == null &&
-        request.resource.data.after == {
-          'fundId': topup.fundId,
-          'amount': topup.amount
-        };
+        request.resource.data.after == topupAuditFields(topup);
     }
 
     function validWithdrawalDeleteAudit(auditId) {
@@ -789,7 +792,7 @@ service cloud.firestore {
       allow create: if isOwner() &&
         request.resource.data.keys().hasOnly([
           'fundId', 'amount', 'note', 'createdBy', 'createdByName',
-          'createdAt', 'auditLogId'
+          'createdAt', 'auditLogId', 'topupDate'
         ]) &&
         request.resource.data.fundId is string &&
         exists(/databases/$(database)/documents/funds/$(request.resource.data.fundId)) &&
@@ -800,6 +803,9 @@ service cloud.firestore {
         request.resource.data.createdByName is string &&
         request.resource.data.createdByName.size() <= 200 &&
         request.resource.data.createdAt == request.time &&
+        (!request.resource.data.keys().hasAny(['topupDate']) ||
+          (request.resource.data.topupDate is timestamp &&
+            request.resource.data.topupDate <= request.time)) &&
         request.resource.data.auditLogId is string &&
         auditMatches(
           request.resource.data.auditLogId,
@@ -807,7 +813,7 @@ service cloud.firestore {
           'fundTopups',
           topupId,
           null,
-          { 'fundId': request.resource.data.fundId, 'amount': request.resource.data.amount }
+          topupAuditFields(request.resource.data)
         );
       allow update, delete: if false;
     }

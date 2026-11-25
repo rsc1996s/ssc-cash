@@ -1,0 +1,21 @@
+import{j as e}from"./index-BsrOH_fR.js";import{r as x}from"./recharts-BVJVKRol.js";import{b as p,q as f,w as h,c as y}from"./firebase-g442vCQG.js";import{e as c,L as b,d as k}from"./App-Kuo-SUzQ.js";import{L as g}from"./Layout-BAqoUYMl.js";import{P as j}from"./PageHeader-GvlA_vse.js";import{H as v}from"./history-DnX9ZrIw.js";/**
+ * @license lucide-react v0.383.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */const N=c("ChevronRight",[["path",{d:"m9 18 6-6-6-6",key:"mthhwq"}]]);/**
+ * @license lucide-react v0.383.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */const w=c("Landmark",[["line",{x1:"3",x2:"21",y1:"22",y2:"22",key:"j8o0r"}],["line",{x1:"6",x2:"6",y1:"18",y2:"11",key:"10tf0k"}],["line",{x1:"10",x2:"10",y1:"18",y2:"11",key:"54lgf6"}],["line",{x1:"14",x2:"14",y1:"18",y2:"11",key:"380y"}],["line",{x1:"18",x2:"18",y1:"18",y2:"11",key:"1kevvc"}],["polygon",{points:"12 2 20 7 4 7",key:"jkujk7"}]]);/**
+ * @license lucide-react v0.383.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */const L=c("Tags",[["path",{d:"m15 5 6.3 6.3a2.4 2.4 0 0 1 0 3.4L17 19",key:"1cbfv1"}],["path",{d:"M9.586 5.586A2 2 0 0 0 8.172 5H3a1 1 0 0 0-1 1v5.172a2 2 0 0 0 .586 1.414L8.29 18.29a2.426 2.426 0 0 0 3.42 0l3.58-3.58a2.426 2.426 0 0 0 0-3.42z",key:"135mg7"}],["circle",{cx:"6.5",cy:"9.5",r:".5",fill:"currentColor",key:"5pm5xn"}]]);/**
+ * @license lucide-react v0.383.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */const S=c("Users",[["path",{d:"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2",key:"1yyitq"}],["circle",{cx:"9",cy:"7",r:"4",key:"nufk8"}],["path",{d:"M22 21v-2a4 4 0 0 0-3-3.87",key:"kshegd"}],["path",{d:"M16 3.13a4 4 0 0 1 0 7.75",key:"1da9ce"}]]);function C({to:n,onClick:i,leading:s,title:t,description:r,meta:a,trailing:o,className:m="",children:u}){const l=`flex min-h-touch min-w-0 items-center gap-3 rounded-xl border border-paperLine bg-white p-3 text-left shadow-card transition-colors hover:border-blue-300 hover:bg-blue-50/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus ${m}`,d=u||e.jsxs(e.Fragment,{children:[s&&e.jsx("span",{className:"shrink-0",children:s}),e.jsxs("span",{className:"min-w-0 flex-1",children:[e.jsx("span",{className:"block break-words text-base font-medium text-ink",children:t}),r&&e.jsx("span",{className:"mt-0.5 block break-words text-sm text-inkSoft",children:r}),a&&e.jsx("span",{className:"mt-0.5 block break-words text-xs text-inkSoft",children:a})]}),o&&e.jsx("span",{className:"shrink-0",children:o})]});return n?e.jsx(b,{to:n,className:l,children:d}):i?e.jsx("button",{type:"button",onClick:i,className:l,children:d}):e.jsx("div",{className:l,children:d})}const H=[{to:"/settings/users",label:"ผู้ใช้งาน",description:"อนุมัติและจัดการบัญชีผู้ใช้",icon:S,showPendingCount:!0},{to:"/settings/categories",label:"หมวดหมู่",description:"จัดการหมวดหมู่เงินสดและใบเบิกโอน",icon:L},{to:"/settings/bank-accounts",label:"บัญชีธนาคาร",description:"จัดการบัญชีต้นทาง ผู้ทำรายการ และปลายทาง",icon:w},{to:"/settings/activity",label:"ประวัติใช้งาน",description:"ตรวจสอบเหตุการณ์ที่เกิดขึ้นในระบบ",icon:v}];function T(){const[n,i]=x.useState(0);return x.useEffect(()=>{const s=p(f(y(k,"users"),h("role","==","pending")),t=>i(t.size),t=>console.error("โหลดจำนวนผู้ใช้รออนุมัติไม่สำเร็จ:",t));return()=>s()},[]),e.jsxs(g,{children:[e.jsx(j,{title:"ตั้งค่า",fallbackTo:"/"}),e.jsx("div",{className:"space-y-3",children:H.map(({to:s,label:t,description:r,icon:a,showPendingCount:o})=>e.jsx(C,{to:s,className:"min-h-20 p-4",leading:e.jsx("span",{className:"flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-700",children:e.jsx(a,{size:21})}),title:e.jsxs("span",{className:"flex items-center gap-2 font-semibold",children:[t,o&&n>0&&e.jsx("span",{className:"inline-flex min-w-6 items-center justify-center rounded-full bg-danger px-2 py-0.5 text-xs font-semibold text-white",children:n})]}),description:r,trailing:e.jsx(N,{className:"text-inkSoft",size:20})},s))})]})}export{T as default};
