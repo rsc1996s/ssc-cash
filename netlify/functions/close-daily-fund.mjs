@@ -94,6 +94,10 @@ async function closeFund(db, uid, input, now) {
     if (!canCloseDailyFund(user)) {
       throw new HttpError(403, "permission-denied", "ไม่มีสิทธิ์ปิดยอดประจำวัน");
     }
+    if (user.role === "staff" && Object.hasOwn(user, "fundIds") &&
+        (!Array.isArray(user.fundIds) || !user.fundIds.includes(input.fundId))) {
+      throw new HttpError(403, "permission-denied", "คุณไม่ได้รับมอบหมายงบค่าใช้จ่ายนี้");
+    }
     if (!fundSnapshot.exists) throw new HttpError(404, "not-found", "ไม่พบงบค่าใช้จ่ายที่เลือก");
 
     const fund = { id: fundSnapshot.id, ...fundSnapshot.data() };
