@@ -15,17 +15,7 @@ import FormHeader from "../components/ui/FormHeader";
 import { useFeedback } from "../components/ui/FeedbackProvider";
 import SearchPicker from "../components/ui/SearchPicker";
 import useScopedCashData from "../hooks/useScopedCashData";
-
-function bangkokDateNow() {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Bangkok",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date());
-  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
-  return `${values.year}-${values.month}-${values.day}`;
-}
+import { bangkokDate } from "../lib/businessDate";
 
 function closingKey(closing) {
   return `${closing.fundId}:${closing.businessDate}`;
@@ -109,7 +99,7 @@ export default function DailyClosings() {
         },
         body: JSON.stringify({
           fundId,
-          businessDate: correction?.businessDate || bangkokDateNow(),
+          businessDate: correction?.businessDate || bangkokDate(),
           countedCash: Number(countedCash),
           reason,
           supersedesId: correction?.id || null,
@@ -222,7 +212,7 @@ export default function DailyClosings() {
               <p className="mt-1 font-semibold text-blue-800">
                 {correction
                   ? `${formatBaht(correction.expectedBalance)} บาท`
-                  : `${bangkokDateNow()} · ${selectedFund?.label || "เลือกงบค่าใช้จ่าย"}`}
+                  : `${bangkokDate()} · ${selectedFund?.label || "เลือกงบค่าใช้จ่าย"}`}
               </p>
             </div>
             <label className="block text-sm font-medium">

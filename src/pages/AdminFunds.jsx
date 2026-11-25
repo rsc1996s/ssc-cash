@@ -5,6 +5,7 @@ import {
   updateDoc,
   doc,
   serverTimestamp,
+  Timestamp,
   writeBatch,
 } from "firebase/firestore";
 import { db } from "../firebase";
@@ -22,6 +23,7 @@ import PageHeader from "../components/ui/PageHeader";
 import Card from "../components/ui/Card";
 import Input from "../components/ui/Input";
 import useScopedCashData from "../hooks/useScopedCashData";
+import { bangkokDate, formatBangkokDate, parseBangkokDate } from "../lib/businessDate";
 
 export default function AdminFunds() {
   const { user, profile } = useAuth();
@@ -29,7 +31,7 @@ export default function AdminFunds() {
   const { funds, topups, transactions, error: loadError } = useScopedCashData();
 
   const [newFund, setNewFund] = useState({ label: "", openingBalance: "" });
-  const [topupDraft, setTopupDraft] = useState({}); // { [fundId]: {amount, note} }
+  const [topupDraft, setTopupDraft] = useState({});
   const [editingId, setEditingId] = useState(null);
   const [editDraft, setEditDraft] = useState({ label: "", openingBalance: "" });
   const [busy, setBusy] = useState(false);
@@ -81,6 +83,12 @@ export default function AdminFunds() {
 
   async function submitTopup(fundId) {
     const draft = topupDraft[fundId] || {};
+    const topupDate = parseBangkokDate(draft.date || "");
+    if (!topupDate || draft.date > bangkokDate()) {
+      setError("กรุณาเลือกวันที่เติมเงินที่ถูกต้องและไม่เกินวันนี้");
+      document.getElementById("fund-topup-date")?.focus();
+      return;
+    }
     if (!draft.amount || Number(draft.amount) <= 0) {
       setError("กรุณากรอกจำนวนเงินมากกว่า 0 บาท");
       document.getElementById("fund-topup-amount")?.focus();
@@ -90,7 +98,7 @@ export default function AdminFunds() {
     setError("");
     try {
       const topupRef = doc(collection(db, "fundTopups"));
-      const after = { fundId, amount: Number(draft.amount) };
+      const after = { fundId, amount: Number(draft.amount), topupDate: Timestamp.fromDate(topupDate) };
       const audit = newAuditEvent({
         actorUid: user.uid,
         actorName: profile?.name || user.email,
@@ -111,7 +119,7 @@ export default function AdminFunds() {
       });
       queueAuditEvent(batch, audit);
       await batch.commit();
-      setTopupDraft((d) => ({ ...d, [fundId]: { amount: "", note: "" } }));
+      setTopupDraft((d) => ({ ...d, [fundId]: null }));
       setTopupFundId(null);
       toast("เติมเงินเข้างบค่าใช้จ่ายแล้ว");
     } catch (err) {
@@ -144,15 +152,22 @@ export default function AdminFunds() {
 
   async function cancelTopup() {
     const draft = topupDraft[topupFundId] || {};
-    if ((draft.amount || draft.note) && !await confirm({
+    if ((draft.amount || draft.note || draft.date !== draft.initialDate) && !await confirm({
       title: "ยกเลิกการเติมเงิน",
       description: "ข้อมูลที่กรอกไว้แต่ยังไม่ได้บันทึกจะหายไป",
       confirmLabel: "ทิ้งข้อมูล",
       cancelLabel: "ทำต่อ",
       danger: true,
     })) return;
-    setTopupDraft((items) => ({ ...items, [topupFundId]: { amount: "", note: "" } }));
+    setTopupDraft((items) => ({ ...items, [topupFundId]: null }));
     setTopupFundId(null);
+  }
+
+  function openTopup(fundId) {
+    const today = bangkokDate();
+    setTopupDraft((items) => ({ ...items, [fundId]: { amount: "", note: "", date: today, initialDate: today } }));
+    setError("");
+    setTopupFundId(fundId);
   }
 
   async function saveEdit(fundId) {
@@ -216,7 +231,6 @@ export default function AdminFunds() {
       {section === "funds" && <div className="space-y-4 mb-8">
         {funds.map((f) => {
           const balance = currentFundBalance(f, topups, transactions);
-          const draft = topupDraft[f.id] || { amount: "", note: "" };
           return (
             <Card key={f.id} className="p-4 sm:p-5">
               {editingId === f.id ? (
@@ -240,7 +254,6 @@ export default function AdminFunds() {
                     <div>
                       <label className="text-xs text-inkSoft block mb-1">ยอดเงินตั้งต้น (บาท)</label>
                       <Input
-                        id="fund-topup-amount"
                         type="number"
                         inputMode="decimal"
                         step="0.01"
@@ -278,7 +291,7 @@ export default function AdminFunds() {
 
               <button
                 type="button"
-                onClick={() => setTopupFundId(f.id)}
+                onClick={() => openTopup(f.id)}
                 className="mt-3 min-h-11 w-full rounded-lg border border-paperLine text-sm font-medium text-blue-700"
               >
                 เติมเงินเข้างบนี้
@@ -293,7 +306,8 @@ export default function AdminFunds() {
                     .map((t) => (
                       <li key={t.id}>
                         +{formatBaht(t.amount)} บาท โดย {t.createdByName} ·{" "}
-                        {formatDateTime(t.createdAt)} {t.note && `(${t.note})`}
+                        {t.topupDate ? `วันที่เติม ${formatBangkokDate(t.topupDate)} · ` : "ไม่ได้ระบุวันที่เติม · "}
+                        บันทึก {formatDateTime(t.createdAt)} {t.note && `(${t.note})`}
                       </li>
                     ))}
                 </ul>
@@ -367,10 +381,27 @@ export default function AdminFunds() {
           <form id="fund-topup-form" onSubmit={(event) => {
             event.preventDefault();
             submitTopup(topupFundId);
+          }} onKeyDown={(event) => {
+            if (event.key === "Enter") event.preventDefault();
           }} className="space-y-3">
+            <label className="block text-sm">
+              วันที่เติมเงิน
+              <Input
+                id="fund-topup-date"
+                type="date"
+                max={bangkokDate()}
+                value={(topupDraft[topupFundId] || {}).date || ""}
+                onChange={(event) => setTopupDraft((items) => ({
+                  ...items,
+                  [topupFundId]: { ...(items[topupFundId] || {}), date: event.target.value },
+                }))}
+                className="mt-1"
+              />
+            </label>
             <label className="block text-sm">
               จำนวนเงิน (บาท)
               <Input
+                id="fund-topup-amount"
                 type="number"
                 inputMode="decimal"
                 step="0.01"
@@ -382,6 +413,7 @@ export default function AdminFunds() {
                 className="mt-1 w-full border border-paperLine rounded px-3 py-2"
               />
             </label>
+            <p className="text-xs text-inkSoft">วันที่เติมใช้แสดงในประวัติ ส่วนยอดและรายงานยังอ้างอิงเวลาที่บันทึกจริง</p>
             <label className="block text-sm">
               หมายเหตุ
               <Input
