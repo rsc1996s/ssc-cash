@@ -6,10 +6,13 @@ function rowDate(row) {
   return value.toDate ? value.toDate() : new Date(value);
 }
 
-function withinDate(date, filters) {
+function currentDate() {
+  return new Date();
+}
+
+function withinDate(date, filters, today) {
   if (!date || Number.isNaN(date.getTime())) return false;
   const start = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const today = new Date();
   const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   if (filters.datePreset === "today") return start.getTime() === todayStart.getTime();
   if (filters.datePreset === "week") {
@@ -33,6 +36,7 @@ export default function useTransactionFilters(rows, {
   initialDatePreset = "all",
   initialFromDate = "",
   initialToDate = "",
+  getToday = currentDate,
 } = {}) {
   const [filters, setFilters] = useState(() => ({
     search: "",
@@ -57,7 +61,7 @@ export default function useTransactionFilters(rows, {
   const filtered = useMemo(() => {
     const search = filters.search.trim().toLocaleLowerCase("th");
     return rows.filter((row) => {
-      if (!withinDate(getDate(row), filters)) return false;
+      if (!withinDate(getDate(row), filters, getToday())) return false;
       if (filters.fund !== "all" && row.fundId !== filters.fund) return false;
       if (filters.category !== "all" && row.category !== filters.category) return false;
       if (filters.status !== "all" && (row.status || "approved") !== filters.status) return false;
@@ -68,7 +72,7 @@ export default function useTransactionFilters(rows, {
       }
       return true;
     });
-  }, [rows, filters, getDate]);
+  }, [rows, filters, getDate, getToday]);
 
   const totals = useMemo(() => filtered.reduce(
     (result, row) => {

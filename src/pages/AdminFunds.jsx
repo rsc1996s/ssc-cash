@@ -7,6 +7,7 @@ import {
   serverTimestamp,
   Timestamp,
   writeBatch,
+  runTransaction,
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
@@ -24,6 +25,8 @@ import Card from "../components/ui/Card";
 import Input from "../components/ui/Input";
 import useScopedCashData from "../hooks/useScopedCashData";
 import { bangkokDate, formatBangkokDate, parseBangkokDate } from "../lib/businessDate";
+import VoidReasonSheet from "../components/VoidReasonSheet";
+import { isActiveFund, isActiveTopup } from "../lib/cashStatus";
 
 export default function AdminFunds() {
   const { user, profile } = useAuth();
@@ -38,6 +41,7 @@ export default function AdminFunds() {
   const [error, setError] = useState("");
   const [section, setSection] = useState("funds");
   const [topupFundId, setTopupFundId] = useState(null);
+  const [voidTarget, setVoidTarget] = useState(null);
 
   async function createFund(e) {
     e.preventDefault();
@@ -108,23 +112,33 @@ export default function AdminFunds() {
         before: null,
         after,
       });
-      const batch = writeBatch(db);
-      batch.set(topupRef, {
-        ...after,
-        note: (draft.note || "").trim(),
-        createdBy: user.uid,
-        createdByName: profile?.name || user.email,
-        createdAt: serverTimestamp(),
-        auditLogId: audit.ref.id,
+      const fundRef = doc(db, "funds", fundId);
+      await runTransaction(db, async (batch) => {
+        const fundSnapshot = await batch.get(fundRef);
+        if (!fundSnapshot.exists() || fundSnapshot.data().archived === true) {
+          throw new Error("งบนี้ถูกปิดใช้งานแล้ว ไม่สามารถเติมเงิน");
+        }
+        batch.set(topupRef, {
+          ...after,
+          note: (draft.note || "").trim(),
+          createdBy: user.uid,
+          createdByName: profile?.name || user.email,
+          createdAt: serverTimestamp(),
+          auditLogId: audit.ref.id,
+        });
+        batch.update(fundRef, {
+          lastCreatedTopupId: topupRef.id,
+          topupCreatedAt: serverTimestamp(),
+        });
+        queueAuditEvent(batch, audit);
       });
-      queueAuditEvent(batch, audit);
-      await batch.commit();
       setTopupDraft((d) => ({ ...d, [fundId]: null }));
       setTopupFundId(null);
       toast("เติมเงินเข้างบค่าใช้จ่ายแล้ว");
     } catch (err) {
       console.error(err);
-      setError("เติมเงินเข้างบค่าใช้จ่ายไม่สำเร็จ");
+      setError(err.message === "งบนี้ถูกปิดใช้งานแล้ว ไม่สามารถเติมเงิน"
+        ? err.message : "เติมเงินเข้างบค่าใช้จ่ายไม่สำเร็จ กรุณาตรวจสอบสิทธิ์และการเชื่อมต่อ");
     } finally {
       setBusy(false);
     }
@@ -213,6 +227,42 @@ export default function AdminFunds() {
     }
   }
 
+  async function voidSelected(reasonText) {
+    if (voidTarget.kind === "fund") {
+      const token = await user.getIdToken();
+      const response = await fetch("/.netlify/functions/archive-fund", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ fundId: voidTarget.item.id, reason: reasonText }),
+      });
+      if (!response.headers.get("content-type")?.includes("application/json")) {
+        throw new Error("ไม่พบฟังก์ชันปิดงบ กรุณาตรวจสอบการ deploy ฟังก์ชัน Netlify");
+      }
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message || "ปิดงบไม่สำเร็จ");
+      toast("ปิดใช้งานงบแล้ว");
+      return;
+    }
+    const topup = voidTarget.item;
+    const audit = newAuditEvent({
+      actorUid: user.uid,
+      actorName: profile?.name || user.email,
+      action: "fund-topup-voided",
+      targetCollection: "fundTopups",
+      targetId: topup.id,
+      before: { fundId: topup.fundId, amount: topup.amount, status: "active" },
+      after: { fundId: topup.fundId, amount: topup.amount, status: "voided", reason: reasonText },
+    });
+    const batch = writeBatch(db);
+    batch.update(doc(db, "fundTopups", topup.id), {
+      status: "voided", voidedBy: user.uid, voidedByName: profile?.name || user.email,
+      voidedAt: serverTimestamp(), voidReason: reasonText, auditLogId: audit.ref.id,
+    });
+    queueAuditEvent(batch, audit);
+    await batch.commit();
+    toast("ยกเลิกการเติมเงินแล้ว");
+  }
+
   return (
     <Layout>
       <PageHeader title="งบค่าใช้จ่ายหมุนเวียน" fallbackTo="/" />
@@ -270,13 +320,14 @@ export default function AdminFunds() {
                   <div>
                     <div className="flex items-center gap-2">
                       <div className="text-lg font-semibold">{f.label}</div>
-                      <button
+                      {!isActiveFund(f) && <span className="rounded bg-slate-100 px-2 py-1 text-xs text-inkSoft">ปิดใช้งาน</span>}
+                      {isActiveFund(f) && <button
                         onClick={() => startEdit(f)}
                         className="text-inkSoft hover:text-primary p-1 -m-1"
                         title="แก้ไขฝั่งนี้"
                       >
                         <Pencil size={14} />
-                      </button>
+                      </button>}
                     </div>
                     <div className="text-xs text-inkSoft">
                       ยอดตั้งต้น {formatBaht(f.openingBalance)} บาท
@@ -292,7 +343,8 @@ export default function AdminFunds() {
               <button
                 type="button"
                 onClick={() => openTopup(f.id)}
-                className="mt-3 min-h-11 w-full rounded-lg border border-paperLine text-sm font-medium text-blue-700"
+                disabled={!isActiveFund(f)}
+                className="mt-3 min-h-11 w-full rounded-lg border border-paperLine text-sm font-medium text-blue-700 disabled:opacity-50"
               >
                 เติมเงินเข้างบนี้
               </button>
@@ -307,11 +359,22 @@ export default function AdminFunds() {
                       <li key={t.id}>
                         +{formatBaht(t.amount)} บาท โดย {t.createdByName} ·{" "}
                         {t.topupDate ? `วันที่เติม ${formatBangkokDate(t.topupDate)} · ` : "ไม่ได้ระบุวันที่เติม · "}
-                        บันทึก {formatDateTime(t.createdAt)} {t.note && `(${t.note})`}
+                        บันทึก {formatDateTime(t.createdAt)} {t.note && `(${t.note})`}{" "}
+                        {isActiveTopup(t) ? (
+                          <button type="button" onClick={() => setVoidTarget({ kind: "topup", item: t })} className="min-h-11 px-2 font-semibold text-danger">ยกเลิกเงินเติม</button>
+                        ) : (
+                          <span className="text-danger">ยกเลิกแล้ว · {t.voidReason} · {t.voidedByName} ({formatDateTime(t.voidedAt)})</span>
+                        )}
                       </li>
                     ))}
                 </ul>
               </details>
+              {isActiveFund(f) && (
+                <button type="button" onClick={() => setVoidTarget({ kind: "fund", item: f })} className="mt-2 min-h-11 text-sm font-medium text-danger">
+                  ปิดใช้งานงบ
+                </button>
+              )}
+              {!isActiveFund(f) && <p className="mt-2 text-xs text-inkSoft">ปิดโดย {f.archivedByName} ({formatDateTime(f.archivedAt)}) · {f.archiveReason}</p>}
             </Card>
           );
         })}
@@ -413,7 +476,7 @@ export default function AdminFunds() {
                 className="mt-1 w-full border border-paperLine rounded px-3 py-2"
               />
             </label>
-            <p className="text-xs text-inkSoft">วันที่เติมใช้แสดงในประวัติ ส่วนยอดและรายงานยังอ้างอิงเวลาที่บันทึกจริง</p>
+            <p className="text-xs text-inkSoft">วันที่เติมใช้ในแดชบอร์ดและรายงาน ส่วนการปิดยอดรายวันอ้างอิงเวลาที่บันทึกจริง</p>
             <label className="block text-sm">
               หมายเหตุ
               <Input
@@ -429,6 +492,15 @@ export default function AdminFunds() {
           </form>
         )}
       </Sheet>
+      <VoidReasonSheet
+        open={Boolean(voidTarget)}
+        title={voidTarget?.kind === "fund" ? "ปิดใช้งานงบ" : "ยกเลิกเงินเติม"}
+        description={voidTarget?.kind === "fund"
+          ? "งบและประวัติยังดูได้ แต่จะเพิ่มรายการหรือเติมเงินใหม่ไม่ได้ ต้องจัดการรายการที่รอตรวจก่อน"
+          : "เงินเติมจะยังอยู่ในประวัติ แต่ไม่นับในยอดงบและรายงาน ยอดย้อนหลังอาจเปลี่ยน"}
+        onClose={() => setVoidTarget(null)}
+        onConfirm={voidSelected}
+      />
     </Layout>
   );
 }

@@ -6,7 +6,6 @@ import StatusBadge from "../components/ui/StatusBadge";
 import TypeBadge from "../components/TypeBadge";
 import EmptyState from "../components/ui/EmptyState";
 import LowFundBalanceBanner from "../components/LowFundBalanceBanner";
-import MetricCard from "../components/MetricCard";
 import SectionTitle from "../components/ui/SectionTitle";
 import Card from "../components/ui/Card";
 import { formatBaht, formatDateTime, PAYMENT_LABEL, STATUS_LABEL } from "../lib/format";
@@ -14,7 +13,6 @@ import { evidencePhotos } from "../lib/evidence";
 import {
   ArrowUpRight,
   ArrowDownRight,
-  Wallet,
   Receipt,
   SearchX,
 } from "lucide-react";
@@ -23,11 +21,11 @@ import useTransactionFilters from "../components/useTransactionFilters";
 import { downloadCsv } from "../components/csvExport";
 import useScopedCashData from "../hooks/useScopedCashData";
 import Loading from "../components/ui/Loading";
-import CashFlowChart from "../components/CashFlowChart";
+import FundDashboard from "../components/FundDashboard";
 
 export default function StaffDashboard() {
   const { user } = useAuth();
-  const { transactions, loading, error, empty } = useScopedCashData();
+  const { funds, topups, transactions, loading, error, empty } = useScopedCashData();
   const rows = useMemo(() => transactions.filter((row) => row.createdBy === user?.uid)
     .sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0)), [transactions, user?.uid]);
   const indexUrl = error?.message?.match(/https:\/\/console\.firebase\.google\.com\/[^\s]+/)?.[0]?.replace(/[).,]+$/, "");
@@ -65,19 +63,11 @@ export default function StaffDashboard() {
   return (
     <Layout>
       <LowFundBalanceBanner />
-      <p className="mb-2 text-sm text-inkSoft">งบที่คุณดูแล</p>
       {empty && <p className="mb-4 rounded-lg bg-warning-light p-3 text-sm text-warning">ยังไม่ได้รับมอบหมายงบ ติดต่อแอดมิน</p>}
 
       <div className="grid gap-3 lg:grid-cols-2 lg:gap-4">
         <div className="min-w-0">
-          <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
-            <div className="col-span-2 sm:col-span-1">
-              <MetricCard compact label="ยอดคงเหลือสุทธิ" value={`${formatBaht(totals.income - totals.expense)} บาท`} icon={Wallet} tone="primary" />
-            </div>
-            <MetricCard compact label="รายรับรวม" value={formatBaht(totals.income)} icon={ArrowUpRight} tone="income" />
-            <MetricCard compact label="รายจ่ายรวม" value={formatBaht(totals.expense)} icon={ArrowDownRight} tone="expense" />
-          </div>
-          <CashFlowChart transactions={transactions} />
+          <FundDashboard funds={funds} topups={topups} transactions={transactions} />
         </div>
         <div className="min-w-0">
       <SectionTitle title="รายการของฉัน" className="mb-2" />

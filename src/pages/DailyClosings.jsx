@@ -16,6 +16,7 @@ import { useFeedback } from "../components/ui/FeedbackProvider";
 import SearchPicker from "../components/ui/SearchPicker";
 import useScopedCashData from "../hooks/useScopedCashData";
 import { bangkokDate } from "../lib/businessDate";
+import { isActiveFund } from "../lib/cashStatus";
 
 function closingKey(closing) {
   return `${closing.fundId}:${closing.businessDate}`;
@@ -24,7 +25,7 @@ function closingKey(closing) {
 export default function DailyClosings() {
   const { user, isOwner } = useAuth();
   const { confirm, toast } = useFeedback();
-  const { funds, loading: loadingFunds, error: fundsError } = useScopedCashData();
+  const { funds: allFunds, loading: loadingFunds, error: fundsError } = useScopedCashData();
   const [closings, setClosings] = useState([]);
   const [loadingClosings, setLoadingClosings] = useState(isOwner);
   const [error, setError] = useState("");
@@ -33,6 +34,7 @@ export default function DailyClosings() {
   const [countedCash, setCountedCash] = useState("");
   const [reason, setReason] = useState("");
   const [correction, setCorrection] = useState(null);
+  const funds = useMemo(() => correction ? allFunds : allFunds.filter(isActiveFund), [allFunds, correction]);
   const [variance, setVariance] = useState(null);
   const [result, setResult] = useState(null);
   const [visibleCount, setVisibleCount] = useState(10);

@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import Layout from "../components/Layout";
-import { formatBaht, formatDateTime, TYPE_LABEL, STATUS_LABEL } from "../lib/format";
+import { formatBaht, formatDate, TYPE_LABEL, STATUS_LABEL } from "../lib/format";
 import { evidencePhotos } from "../lib/evidence";
-import { buildFundLedger, statementForRange } from "../lib/ledger";
+import { statementForRange } from "../lib/ledger";
+import { buildBusinessDateLedger, reportToday, reportTransactionDate } from "../lib/reportLedger";
+import { isActiveFund } from "../lib/cashStatus";
 import OverviewCharts from "../components/OverviewCharts";
 import { useAuth } from "../context/AuthContext";
 import { downloadCsv } from "../components/csvExport";
@@ -26,13 +28,8 @@ function toInputDate(d) {
 
 const CATEGORY_COLORS = ["#2563EB", "#0EA5E9", "#16A34A", "#F59E0B", "#8B5CF6", "#EC4899", "#14B8A6", "#64748B"];
 
-function reportDate(row) {
-  const date = row.reviewedAt || row.createdAt;
-  return date ? (date.toDate ? date.toDate() : new Date(date)) : null;
-}
-
 function reportRange(filters) {
-  const now = new Date();
+  const now = reportToday();
   const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
   if (filters.datePreset === "today") return [new Date(now.getFullYear(), now.getMonth(), now.getDate()), end];
   if (filters.datePreset === "week") {
@@ -40,7 +37,7 @@ function reportRange(filters) {
     start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
     return [start, end];
   }
-  if (filters.datePreset === "month") return [new Date(now.getFullYear(), now.getMonth(), 1), end];
+  if (filters.datePreset === "month") return [new Date(now.getFullYear(), now.getMonth(), 1), new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)];
   if (filters.datePreset === "custom") {
     return [
       filters.fromDate ? new Date(`${filters.fromDate}T00:00:00`) : new Date(0),
@@ -56,11 +53,11 @@ export default function Reports() {
   const loadError = error ? "โหลดข้อมูลรายงานไม่สำเร็จ กรุณาตรวจสอบการเชื่อมต่อและสิทธิ์ Firestore" : null;
   const [fundId, setFundId] = useState("");
   const [initialFromDate] = useState(() => {
-    const d = new Date();
+    const d = reportToday();
     d.setDate(1);
     return toInputDate(d);
   });
-  const [initialToDate] = useState(() => toInputDate(new Date()));
+  const [initialToDate] = useState(() => toInputDate(reportToday()));
   const [reportTab, setReportTab] = useState("statement");
   const [visibleCount, setVisibleCount] = useState(10);
 
@@ -72,7 +69,9 @@ export default function Reports() {
   const reportTransactions = transactions.filter((transaction) => transaction.fundId === fundId && (isOwner || transaction.status === "approved"));
   const { filters, updateFilter, clearFilters, filtered, categories, authors, totals } =
     useTransactionFilters(reportTransactions, {
-      getDate: reportDate,
+      getDate: reportTransactionDate,
+      getToday: reportToday,
+      initialStatus: "approved",
       initialDatePreset: "month",
       initialFromDate,
       initialToDate,
@@ -80,9 +79,9 @@ export default function Reports() {
 
   const statement = useMemo(() => {
     if (!fund) return null;
-    const ledger = buildFundLedger(fund, topups, transactions);
+    const { ledger, invalidCount } = buildBusinessDateLedger(fund, topups, transactions);
     const [start, end] = reportRange(filters);
-    return statementForRange(ledger, start, end, fund.openingBalance || 0);
+    return { ...statementForRange(ledger, start, end, fund.openingBalance || 0), invalidCount };
   }, [fund, topups, transactions, filters.datePreset, filters.fromDate, filters.toDate]);
 
   const categoryTotals = useMemo(() => {
@@ -100,20 +99,33 @@ export default function Reports() {
     }));
   }, [filtered]);
 
-  const exportRows = () => downloadCsv("รายงานรายการ.csv",
-    ["วันที่", "รายละเอียด", "หมวดหมู่", "ประเภท", "จำนวนเงิน", "สถานะ", "จำนวนหลักฐาน", "ผู้บันทึก", "งบค่าใช้จ่าย"],
-    filtered.map((row) => [
-      formatDateTime(row.reviewedAt || row.createdAt),
-      row.itemDescription,
-      row.category,
-      row.type === "income" ? "รายรับ" : "รายจ่าย",
-      Number(row.amount) || 0,
-      STATUS_LABEL[row.status || "approved"] || row.status,
-      evidencePhotos(row).length,
-      row.createdByName,
-      row.fundLabel,
-    ])
-  );
+  const exportRows = () => {
+    if (reportTab === "statement" && statement) {
+      downloadCsv("รายงาน Statement.csv",
+        ["วันที่", "รายละเอียด", "หมวดหมู่", "ประเภท", "จำนวนเงิน", "คงเหลือ", "ผู้บันทึก"],
+        statement.entries.map((entry) => [
+          formatDate(entry.date), entry.detail, entry.category,
+          entry.kind === "topup" ? "เงินเข้างบค่าใช้จ่าย" : TYPE_LABEL[entry.kind] || entry.kind,
+          entry.amount, entry.balance, entry.by,
+        ])
+      );
+      return;
+    }
+    downloadCsv("รายงานรายการ.csv",
+      ["วันที่", "รายละเอียด", "หมวดหมู่", "ประเภท", "จำนวนเงิน", "สถานะ", "จำนวนหลักฐาน", "ผู้บันทึก", "งบค่าใช้จ่าย"],
+      filtered.map((row) => [
+        formatDate(reportTransactionDate(row)),
+        row.itemDescription,
+        row.category,
+        row.type === "income" ? "รายรับ" : "รายจ่าย",
+        Number(row.amount) || 0,
+        STATUS_LABEL[row.status || "approved"] || row.status,
+        evidencePhotos(row).length,
+        row.createdByName,
+        row.fundLabel,
+      ])
+    );
+  };
 
   if (loading) return <Layout><Loading label="กำลังโหลดรายงาน" /></Layout>;
   if (loadError) return <Layout><p role="alert" className="text-sm text-danger">{loadError}</p></Layout>;
@@ -149,7 +161,7 @@ export default function Reports() {
         <SearchPicker
           value={fundId}
           onChange={setFundId}
-          options={funds.map((item) => ({ value: item.id, label: item.label }))}
+          options={funds.map((item) => ({ value: item.id, label: `${item.label}${isActiveFund(item) ? "" : " (ปิดใช้งาน)"}` }))}
           placeholder="เลือกงบค่าใช้จ่าย"
           ariaLabel="งบค่าใช้จ่าย"
           className="mb-3"
@@ -164,8 +176,8 @@ export default function Reports() {
           clearFilters={clearFilters}
           categories={categories}
           authors={authors}
-          totals={totals}
-          count={filtered.length}
+          totals={reportTab === "statement" && statement ? { income: statement.totalIn, expense: statement.totalOut } : totals}
+          count={reportTab === "statement" && statement ? statement.entries.length : filtered.length}
           showStatus={isOwner}
           statusOptions={isOwner ? undefined : [{ value: "approved", label: "อนุมัติแล้ว" }]}
           onExport={exportRows}
@@ -189,8 +201,13 @@ export default function Reports() {
             <p className="text-sm text-inkSoft">
               ช่วงวันที่ {toInputDate(reportRange(filters)[0])} ถึง {toInputDate(reportRange(filters)[1])}
             </p>
+            <p className="text-xs text-inkSoft">ตามวันที่ทำรายการและวันที่เติมเงิน · เฉพาะรายการที่อนุมัติ</p>
           </div>
 
+          {statement.invalidCount > 0 && <p role="alert" className="mb-3 rounded-lg bg-warning-light p-3 text-sm text-warning">
+            มี {statement.invalidCount} รายการที่วันที่ไม่ถูกต้อง จึงไม่รวมใน Statement กรุณาตรวจสอบข้อมูล
+          </p>}
+          <p className="no-print mb-3 text-xs text-inkSoft">Statement คิดจากงบและช่วงวันที่ที่เลือก ส่วนคำค้นและตัวกรองอื่นใช้กับแท็บรายการและหมวดหมู่</p>
           <div className="hidden overflow-x-auto sm:block">
           <table className="w-full table-fixed text-sm mb-4">
             <thead>
@@ -205,7 +222,7 @@ export default function Reports() {
             <tbody>
               {statement.entries.map((e, i) => (
                 <tr key={i} className="border-b border-paperLine/60">
-                  <td className="py-2">{formatDateTime(e.date)}</td>
+                  <td className="py-2">{formatDate(e.date)}</td>
                   <td className="py-2">{e.detail}</td>
                   <td className="py-2">
                     {e.kind === "topup" ? "เงินเข้างบค่าใช้จ่าย" : TYPE_LABEL[e.kind] || e.kind}
@@ -237,7 +254,7 @@ export default function Reports() {
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="break-words font-medium">{entry.detail}</p>
-                    <p className="mt-1 text-xs text-inkSoft">{formatDateTime(entry.date)} · {entry.kind === "topup" ? "เงินเข้างบค่าใช้จ่าย" : TYPE_LABEL[entry.kind] || entry.kind}</p>
+                    <p className="mt-1 text-xs text-inkSoft">{formatDate(entry.date)} · {entry.kind === "topup" ? "เงินเข้างบค่าใช้จ่าย" : TYPE_LABEL[entry.kind] || entry.kind}</p>
                   </div>
                   <p className={`shrink-0 text-right font-nums ${entry.amount < 0 ? "text-red-700" : "text-green-800"}`}>
                     {entry.amount < 0 ? "-" : "+"}{formatBaht(Math.abs(entry.amount))}
@@ -294,7 +311,7 @@ export default function Reports() {
               <tbody>
                 {filtered.slice(0, visibleCount).map((row) => (
                   <tr key={row.id} className="border-b border-paperLine/60 last:border-0">
-                    <td className="whitespace-nowrap px-4 py-3">{formatDateTime(row.reviewedAt || row.createdAt)}</td>
+                    <td className="whitespace-nowrap px-4 py-3">{formatDate(reportTransactionDate(row))}</td>
                     <td className="max-w-[240px] truncate px-4 py-3">{row.itemDescription || "—"}</td>
                     <td className="px-4 py-3">{row.category || "ไม่ระบุหมวดหมู่"}</td>
                     <td className="px-4 py-3">{STATUS_LABEL[row.status] || row.status || STATUS_LABEL.approved}</td>
@@ -312,7 +329,7 @@ export default function Reports() {
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="break-words font-medium">{row.itemDescription || "—"}</p>
-                    <p className="mt-1 text-xs text-inkSoft">{formatDateTime(row.reviewedAt || row.createdAt)} · {row.category || "ไม่ระบุหมวดหมู่"}</p>
+                    <p className="mt-1 text-xs text-inkSoft">{formatDate(reportTransactionDate(row))} · {row.category || "ไม่ระบุหมวดหมู่"}</p>
                     <p className="mt-1 text-xs text-inkSoft">{STATUS_LABEL[row.status] || row.status || STATUS_LABEL.approved}</p>
                   </div>
                   <p className={`shrink-0 text-right font-nums font-semibold ${row.type === "income" ? "text-green-800" : "text-red-700"}`}>

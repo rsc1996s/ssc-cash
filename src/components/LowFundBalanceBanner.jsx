@@ -2,6 +2,7 @@ import { useAuth } from "../context/AuthContext";
 import useScopedCashData from "../hooks/useScopedCashData";
 import { formatBaht } from "../lib/format";
 import { currentFundBalance } from "../lib/ledger";
+import { isActiveFund } from "../lib/cashStatus";
 
 // เตือนเมื่องบค่าใช้จ่ายคงเหลือต่ำกว่า 20% ของยอดตั้งต้น — ปรับตัวเลขนี้ได้ถ้าต้องการเกณฑ์อื่น
 const LOW_BALANCE_RATIO = 0.2;
@@ -13,6 +14,7 @@ export default function LowFundBalanceBanner() {
   if (error) return <p role="alert" className="mb-4 text-sm text-danger">โหลดข้อมูลงบไม่สำเร็จ กรุณาตรวจสอบสิทธิ์และการเชื่อมต่อ</p>;
 
   const lowFunds = funds
+    .filter(isActiveFund)
     .map((f) => ({ ...f, balance: currentFundBalance(f, topups, approvedTx) }))
     .filter((f) => f.openingBalance > 0 && f.balance < f.openingBalance * LOW_BALANCE_RATIO);
 

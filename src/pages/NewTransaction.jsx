@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, doc, runTransaction, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
 import Layout from "../components/Layout";
@@ -17,6 +17,7 @@ import useReceiptPhotos from "../components/useReceiptPhotos";
 import ReceiptPhotoFields from "../components/ReceiptPhotoFields";
 import useScopedCashData from "../hooks/useScopedCashData";
 import useCategories from "../hooks/useCategories";
+import { isActiveFund } from "../lib/cashStatus";
 
 const TOTAL_PHOTO_KB_WARNING = 700;
 
@@ -45,7 +46,8 @@ export default function NewTransaction() {
   const navigate = useNavigate();
   const { confirm, toast } = useFeedback();
   const [form, setForm] = useState(emptyForm);
-  const { funds, loading: fundsLoading, error: fundsError } = useScopedCashData();
+  const { funds: allFunds, loading: fundsLoading, error: fundsError } = useScopedCashData();
+  const funds = useMemo(() => allFunds.filter(isActiveFund), [allFunds]);
   const { categories, error: categoriesError } = useCategories();
   const receipt = useReceiptPhotos();
   const receiptPhotos = receipt.photos;
@@ -137,7 +139,9 @@ export default function NewTransaction() {
     try {
       const fundLabel = funds.find((f) => f.id === form.fundId)?.label || "";
 
-      await addDoc(collection(db, "transactions"), {
+      const transactionRef = doc(collection(db, "transactions"));
+      const fundRef = doc(db, "funds", form.fundId);
+      const transactionData = {
         fundId: form.fundId,
         fundLabel,
         transactionDate: form.transactionDate,
@@ -162,13 +166,26 @@ export default function NewTransaction() {
         reviewedAt: null,
         reviewNote: null,
         editHistory: [],
+      };
+      await runTransaction(db, async (batch) => {
+        const fundSnapshot = await batch.get(fundRef);
+        if (!fundSnapshot.exists() || fundSnapshot.data().archived === true) {
+          throw new Error("งบนี้ถูกปิดใช้งานแล้ว กรุณาเลือกงบอื่น");
+        }
+        batch.set(transactionRef, transactionData);
+        // The fund write makes creation contend with concurrent fund archival.
+        batch.update(fundRef, {
+          lastCreatedTransactionId: transactionRef.id,
+          transactionCreatedAt: serverTimestamp(),
+        });
       });
 
       toast("บันทึกรายการแล้ว");
       navigate("/");
     } catch (err) {
       console.error(err);
-      setError("บันทึกไม่สำเร็จ ลองใหม่อีกครั้ง");
+      setError(err.message === "งบนี้ถูกปิดใช้งานแล้ว กรุณาเลือกงบอื่น"
+        ? err.message : "บันทึกไม่สำเร็จ กรุณาตรวจสอบสิทธิ์และการเชื่อมต่อแล้วลองใหม่");
     } finally {
       setBusy(false);
     }

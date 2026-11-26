@@ -1,3 +1,5 @@
+import { isActiveTopup } from "./cashStatus.js";
+
 function toDate(ts) {
   if (!ts) return new Date(0);
   return ts.toDate ? ts.toDate() : new Date(ts);
@@ -13,7 +15,7 @@ export function buildFundLedger(fund, topups, transactions) {
   const entries = [];
 
   topups
-    .filter((t) => t.fundId === fund.id)
+    .filter((t) => t.fundId === fund.id && isActiveTopup(t))
     .forEach((t) => {
       entries.push({
         date: toDate(t.createdAt),
@@ -68,3 +70,4 @@ export function statementForRange(ledger, start, end, fundOpeningBalance = 0) {
   const totalOut = within.filter((e) => e.amount < 0).reduce((s, e) => s + Math.abs(e.amount), 0);
   return { openingBalance, entries: within, closingBalance, totalIn, totalOut };
 }
+

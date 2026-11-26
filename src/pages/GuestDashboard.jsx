@@ -15,7 +15,7 @@ import useTransactionFilters from "../components/useTransactionFilters";
 import { downloadCsv } from "../components/csvExport";
 import { evidencePhotos } from "../lib/evidence";
 import useScopedCashData from "../hooks/useScopedCashData";
-import CashFlowChart from "../components/CashFlowChart";
+import FundDashboard from "../components/FundDashboard";
 
 export default function GuestDashboard() {
   const { transactions, loading, funds, topups, error, empty } = useScopedCashData();
@@ -47,10 +47,12 @@ export default function GuestDashboard() {
 
   return (
     <Layout>
-      <p className="mb-3 text-sm text-inkSoft">งบที่คุณดูแล</p>
       {empty && <p className="mb-4 rounded-lg bg-warning-light p-3 text-sm text-warning">ยังไม่ได้รับมอบหมายงบ ติดต่อแอดมิน</p>}
-      <CashFlowChart transactions={rows} />
-      <DashboardInsights funds={funds} topups={topups} transactions={rows} />
+      <FundDashboard funds={funds} topups={topups} transactions={rows} />
+      <details className="mb-3 rounded-xl border border-paperLine bg-white p-3">
+        <summary className="min-h-11 cursor-pointer py-2 text-sm font-semibold text-blue-700">ดูภาพรวมงบทั้งหมดเพิ่มเติม</summary>
+        <DashboardInsights funds={funds} topups={topups} transactions={rows} />
+      </details>
 
       <SectionTitle
         title="รายการที่อนุมัติแล้ว"

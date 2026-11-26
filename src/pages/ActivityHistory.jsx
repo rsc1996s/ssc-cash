@@ -16,6 +16,7 @@ import { formatBangkokDate } from "../lib/businessDate";
 
 const ACTION_LABELS = {
   "transaction-status-changed": "เปลี่ยนสถานะรายการ",
+  "transaction-voided": "ยกเลิกรายการรายรับ–รายจ่าย",
   "transaction-evidence-requested": "ขอหลักฐานรายการ",
   "transaction-evidence-submitted": "ส่งหลักฐานรายการ",
   "transaction-evidence-request-cancelled": "ยกเลิกคำขอหลักฐาน",
@@ -27,6 +28,8 @@ const ACTION_LABELS = {
   "fund-created": "สร้างงบค่าใช้จ่าย",
   "fund-updated": "แก้ไขข้อมูลงบค่าใช้จ่าย/ยอดตั้งต้น",
   "fund-topup-created": "เติมเงินเข้างบค่าใช้จ่าย",
+  "fund-topup-voided": "ยกเลิกการเติมเงิน",
+  "fund-archived": "ปิดใช้งานงบค่าใช้จ่าย",
   "withdrawal-deleted": "ลบใบเบิก",
   "withdrawal-received-changed": "เปลี่ยนยอดรับเงินจริง",
   "transfer-payment-deleted": "ลบใบโอนจ่าย",
@@ -42,8 +45,8 @@ function activityDescription(activity, funds, users) {
       ids.map((id) => funds.find((fund) => fund.id === id)?.label || id).join(", ") || "ไม่มีงบ";
     return `${target}: ${labels(before?.fundIds)} → ${labels(after?.fundIds)} · ชื่อบทบาท ${before?.roleLabel || "ไม่ระบุ"} → ${after?.roleLabel || "ไม่ระบุ"}`;
   }
-  if (action === "transaction-status-changed" || action?.startsWith("transaction-evidence-")) {
-    return `${STATUS_LABEL[before?.status] || before?.status || "—"} → ${STATUS_LABEL[after?.status] || after?.status || "—"}`;
+  if (action === "transaction-status-changed" || action === "transaction-voided" || action?.startsWith("transaction-evidence-")) {
+    return `${STATUS_LABEL[before?.status] || before?.status || "—"} → ${STATUS_LABEL[after?.status] || after?.status || "—"}${after?.reason ? ` · เหตุผล: ${after.reason}` : ""}`;
   }
   if (action === "role-changed" || action === "user-created") {
     return `${before?.role || "—"} → ${after?.role || "—"}`;
@@ -52,6 +55,8 @@ function activityDescription(activity, funds, users) {
     return `ยอดตั้งต้น ${formatBaht(before?.openingBalance)} → ${formatBaht(after?.openingBalance)} บาท`;
   }
   if (action === "fund-topup-created") return `เติม ${formatBaht(after?.amount)} บาท${after?.topupDate ? ` · วันที่เติม ${formatBangkokDate(after.topupDate)}` : ""}`;
+  if (action === "fund-topup-voided") return `ยกเลิกเงินเติม ${formatBaht(after?.amount)} บาท · เหตุผล: ${after?.reason}`;
+  if (action === "fund-archived") return `${after?.label || activity.targetId} · เหตุผล: ${after?.reason}`;
   if (action === "withdrawal-deleted") return `ใบเบิก ${before?.requestNo || activity.targetId}`;
   if (action === "withdrawal-received-changed") return `ใบเบิก ${activity.targetId}: ${before?.receivedAmount == null ? "ยังไม่ระบุ" : formatBaht(before.receivedAmount)} → ${formatBaht(after?.receivedAmount)} บาท`;
   if (action === "transfer-payment-deleted") return `ใบโอน ${before?.transferNo || activity.targetId}`;

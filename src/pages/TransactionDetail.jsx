@@ -19,6 +19,7 @@ import ReceiptPhotoFields from "../components/ReceiptPhotoFields";
 import useReceiptPhotos from "../components/useReceiptPhotos";
 import { canRequestEvidence, canSubmitEvidence, evidencePhotos, evidenceSizeValid } from "../lib/evidence";
 import { canViewFund } from "../lib/fundAccess";
+import VoidReasonSheet from "../components/VoidReasonSheet";
 
 const EDITABLE_FIELDS = [
   { key: "amount", label: "จำนวนเงิน", type: "number" },
@@ -47,6 +48,7 @@ export default function TransactionDetail() {
   const [detailTab, setDetailTab] = useState("details");
   const [requestOpen, setRequestOpen] = useState(false);
   const [submitOpen, setSubmitOpen] = useState(false);
+  const [voidOpen, setVoidOpen] = useState(false);
   const [requestType, setRequestType] = useState("ขอสลิป/ใบเสร็จ");
   const [requestText, setRequestText] = useState("");
   const [evidenceError, setEvidenceError] = useState("");
@@ -82,7 +84,7 @@ export default function TransactionDetail() {
     );
   }
 
-  const canEdit = isOwner || (tx.createdBy === user.uid && tx.status === "pending");
+  const canEdit = tx.status !== "voided" && (isOwner || (tx.createdBy === user.uid && tx.status === "pending"));
   const photos = evidencePhotos(tx);
 
   async function evidenceTransition(action, updates, message) {
@@ -290,6 +292,31 @@ export default function TransactionDetail() {
     }
   }
 
+  async function voidTransaction(reasonText) {
+    const audit = newAuditEvent({
+      actorUid: user.uid,
+      actorName: profile?.name || user.email,
+      action: "transaction-voided",
+      targetCollection: "transactions",
+      targetId: id,
+      before: { status: tx.status },
+      after: { status: "voided", reason: reasonText },
+    });
+    const batch = writeBatch(db);
+    batch.update(doc(db, "transactions", id), {
+      status: "voided",
+      voidedBy: user.uid,
+      voidedByName: profile?.name || user.email,
+      voidedAt: serverTimestamp(),
+      voidReason: reasonText,
+      updatedAt: serverTimestamp(),
+      auditLogId: audit.ref.id,
+    });
+    queueAuditEvent(batch, audit);
+    await batch.commit();
+    toast("ยกเลิกรายการแล้ว");
+  }
+
   // อนุมัติ (เบิกสำเร็จ) ต้องมีลายเซ็นออนไลน์แนบมาด้วยเสมอ — บังคับที่ทั้งหน้าเว็บและ Firestore rules
   async function approveWithSignature() {
     if (!signatureDataUrl) {
@@ -418,6 +445,12 @@ export default function TransactionDetail() {
                 <dd className="text-right">{tx.reviewNote}</dd>
               </>
             )}
+            {tx.voidReason && (
+              <>
+                <dt className="text-inkSoft">เหตุผลที่ยกเลิก</dt>
+                <dd className="text-right">{tx.voidReason} · {tx.voidedByName} ({formatDateTime(tx.voidedAt)})</dd>
+              </>
+            )}
           </dl>
         ) : (
           <form id="edit-transaction-form" onSubmit={saveEdit} className="space-y-3 mb-4">
@@ -526,20 +559,18 @@ export default function TransactionDetail() {
               >
                 ตีกลับ
               </button>
-              <button
-                onClick={() => review("voided")}
-                disabled={busy}
-                className="border border-paperLine rounded px-4 py-2 text-sm"
-              >
-                ยกเลิกรายการ
-              </button>
             </div>
             {tx.status === "needs_evidence" && <p className="mt-2 text-sm text-warning">อนุมัติไม่ได้ระหว่างรอหลักฐาน กรุณารอผู้สร้างส่งหลักฐานหรือยกเลิกคำขอ</p>}
           </div>
         )}
+        {isOwner && tx.status !== "voided" && !editing && (
+          <button type="button" onClick={() => setVoidOpen(true)} className="mt-4 min-h-11 rounded-lg border border-danger px-4 text-sm font-medium text-danger">
+            ยกเลิกรายการ
+          </button>
+        )}
         {!editing && error && <p role="alert" className="mt-3 text-sm text-danger">{error}</p>}
 
-        {tx.status === "approved" && (
+        {(tx.status === "approved" || (tx.status === "voided" && tx.approvalSignatureURL)) && (
           <div className="mt-5 pt-5 border-t border-paperLine">
             <div className="flex justify-between items-end mb-3">
               <div>
@@ -552,12 +583,12 @@ export default function TransactionDetail() {
                   />
                 )}
               </div>
-              <Link
+              {tx.status === "approved" && <Link
                 to={`/transaction/${tx.id}/print`}
                 className="text-sm bg-blue-600 text-white rounded px-4 py-2 font-medium"
               >
                 พิมพ์ใบเบิก
-              </Link>
+              </Link>}
             </div>
           </div>
         )}
@@ -591,6 +622,14 @@ export default function TransactionDetail() {
           </ul>
         </div>
       )}
+
+      <VoidReasonSheet
+        open={voidOpen}
+        title="ยกเลิกรายการ"
+        description="รายการจะถูกเก็บไว้ในประวัติ แต่ไม่นับในยอดงบและรายงานอีก ยอดย้อนหลังอาจเปลี่ยน"
+        onClose={() => setVoidOpen(false)}
+        onConfirm={voidTransaction}
+      />
 
       <Sheet
         open={requestOpen}

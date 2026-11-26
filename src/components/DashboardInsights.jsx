@@ -13,6 +13,7 @@ import {
 } from "recharts";
 import { currentFundBalance } from "../lib/ledger";
 import { formatBaht } from "../lib/format";
+import { dashboardTransactionDate } from "../lib/dashboardCash";
 import Card from "./ui/Card";
 import MetricCard from "./MetricCard";
 
@@ -43,7 +44,8 @@ export default function DashboardInsights({ funds, topups, transactions, pending
     const months = Array.from({ length: 6 }, (_, index) => monthStart(now, index - 5));
     const totals = new Map(months.map((month) => [monthKey(month), { income: 0, expense: 0 }]));
     approved.forEach((transaction) => {
-      const date = dateValue(transaction.reviewedAt || transaction.createdAt);
+      const businessDate = dashboardTransactionDate(transaction);
+      const date = businessDate ? new Date(`${businessDate}T00:00:00`) : null;
       if (!date) return;
       const month = totals.get(monthKey(date));
       if (!month) return;
@@ -108,7 +110,7 @@ export default function DashboardInsights({ funds, topups, transactions, pending
         </summary>
       <div className="grid gap-4 xl:grid-cols-2">
         <Card className="min-w-0 p-4">
-          <h3 className="mb-3 text-base font-semibold">รายรับและรายจ่าย · 6 เดือน</h3>
+          <h3 className="mb-3 text-base font-semibold">รายรับและรายจ่ายตามวันที่ทำรายการ · 6 เดือน</h3>
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={monthly} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
               <CartesianGrid stroke="#D7E3F3" vertical={false} />
@@ -121,7 +123,7 @@ export default function DashboardInsights({ funds, topups, transactions, pending
           </ResponsiveContainer>
         </Card>
         <Card className="min-w-0 p-4">
-          <h3 className="mb-3 text-base font-semibold">ยอดสุทธิรายเดือน · 6 เดือน</h3>
+          <h3 className="mb-3 text-base font-semibold">ยอดสุทธิรายเดือนตามวันที่ทำรายการ · 6 เดือน</h3>
           <ResponsiveContainer width="100%" height={240}>
             <LineChart data={monthly} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
               <CartesianGrid stroke="#D7E3F3" vertical={false} />
