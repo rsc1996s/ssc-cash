@@ -6,6 +6,7 @@ import { formatBaht, formatDate, formatDateTime } from "../lib/format";
 import { lineTotal } from "../lib/transfers";
 import PrintSheet from "../components/PrintSheet";
 import Button from "../components/ui/Button";
+import Loading from "../components/ui/Loading";
 
 export default function TransferPaymentPrint() {
   const { id } = useParams();
@@ -18,7 +19,7 @@ export default function TransferPaymentPrint() {
     return () => unsub();
   }, [id]);
 
-  if (!p) return <div className="p-8 text-inkSoft">กำลังโหลด...</div>;
+  if (!p) return <div className="p-8"><Loading label="กำลังโหลดใบโอนจ่ายสำหรับพิมพ์" /></div>;
 
   return (
     <PrintSheet actions={<Button onClick={() => window.print()}>พิมพ์เอกสาร / บันทึก PDF</Button>}>

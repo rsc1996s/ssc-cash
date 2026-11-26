@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import {
   collection,
@@ -13,6 +13,7 @@ import {
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
 import Layout from "../components/Layout";
+import Loading from "../components/ui/Loading";
 import { formatBaht, formatDateTime } from "../lib/format";
 import { nextDocNumber } from "../lib/counters";
 import { lineTotal, renumberLines, transferredAgainst } from "../lib/transfers";
@@ -74,8 +75,11 @@ export default function WithdrawalRequestForm() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [groupByCategory, setGroupByCategory] = useState(false);
   const [showNote, setShowNote] = useState(true);
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [noteDraft, setNoteDraft] = useState("");
   const [editingLineIndex, setEditingLineIndex] = useState(null);
   const [lineEditDraft, setLineEditDraft] = useState(null);
+  const linesRef = useRef(null);
 
   const canEdit = isNew || isOwner || createdBy === user.uid;
   const categoryOptions = categories.map((category) => ({
@@ -146,6 +150,7 @@ export default function WithdrawalRequestForm() {
   function addLine() {
     setDirty(true);
     setLines((ls) => [...ls, emptyLine(ls.length + 1)]);
+    requestAnimationFrame(() => { if (linesRef.current) linesRef.current.scrollTop = linesRef.current.scrollHeight; });
   }
 
   function removeLine(idx) {
@@ -279,7 +284,7 @@ export default function WithdrawalRequestForm() {
     if (cleanLines.length === 0) {
       setError("กรุณาเพิ่มอย่างน้อย 1 รายการ");
       document.getElementById(
-        window.matchMedia("(min-width: 768px)").matches
+        window.matchMedia("(min-width: 1024px)").matches
           ? "withdrawal-line-description-desktop"
           : "withdrawal-line-edit-0"
       )?.focus();
@@ -403,7 +408,7 @@ export default function WithdrawalRequestForm() {
   if (!loaded) {
     return (
       <Layout>
-        <p className="text-sm text-inkSoft">กำลังโหลด...</p>
+        <Loading label="กำลังโหลดใบเบิก" />
       </Layout>
     );
   }
@@ -535,20 +540,6 @@ export default function WithdrawalRequestForm() {
           </div>
         </div>
 
-        <div className="mb-5">
-          <label className="mb-1 block text-sm font-medium">หมายเหตุ</label>
-          <Textarea
-            value={note}
-            onChange={(event) => {
-              setDirty(true);
-              setNote(event.target.value);
-            }}
-            rows={2}
-            disabled={!canEdit}
-            placeholder="หมายเหตุ (ถ้ามี)"
-          />
-        </div>
-
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-base font-semibold">รายการค่าใช้จ่าย</h2>
           {canEdit && (
@@ -558,7 +549,8 @@ export default function WithdrawalRequestForm() {
           )}
         </div>
 
-        <div className="mb-3 space-y-3 lg:hidden">
+        <div ref={linesRef} className="mb-3 max-h-[45dvh] min-h-0 overflow-y-auto overscroll-contain rounded-lg border border-paperLine p-2" aria-label="รายการค่าใช้จ่าย" tabIndex={0}>
+        <div className="space-y-3 lg:hidden">
           {lines.map((l, idx) => (
             <div key={idx} className="rounded-lg border border-paperLine bg-paper/40 p-3">
               <div className="flex items-center justify-between mb-2">
@@ -587,9 +579,9 @@ export default function WithdrawalRequestForm() {
           ))}
         </div>
 
-        <div className="mb-3 hidden lg:block">
-          <table className="w-full text-sm">
-            <thead>
+        <div className="hidden lg:block">
+          <table className="w-full table-fixed text-sm">
+            <thead className="sticky top-0 z-10 bg-white">
               <tr className="border-b border-paperLine text-left text-xs text-inkSoft">
                 <th className="w-16 py-2">ลำดับ</th>
                 <th className="w-56 py-2">รายการ (หมวด)</th>
@@ -639,6 +631,14 @@ export default function WithdrawalRequestForm() {
             </tbody>
           </table>
         </div>
+        </div>
+
+        <div className="mb-4">
+          <Button type="button" variant="secondary" onClick={() => { setNoteDraft(note); setNoteOpen(true); }}>
+            {note ? "ดู / แก้ไขหมายเหตุ" : "เพิ่มหมายเหตุ"}
+          </Button>
+          {note && <p className="mt-2 break-words text-sm text-inkSoft">{note}</p>}
+        </div>
 
         <div className="mb-4 flex justify-end">
           <div className="rounded-lg bg-blue-50 px-4 py-3 text-right">
@@ -660,6 +660,13 @@ export default function WithdrawalRequestForm() {
           </div>
         )}
       </div>
+      <Sheet open={noteOpen} title="หมายเหตุ" onClose={() => setNoteOpen(false)}
+        header={<FormHeader title="หมายเหตุ" onCancel={() => setNoteOpen(false)}
+          onSave={() => { if (noteDraft !== note) setDirty(true); setNote(noteDraft); setNoteOpen(false); }}
+          saveLabel="ใช้หมายเหตุ" />}>
+        <Textarea value={noteDraft} onChange={(event) => setNoteDraft(event.target.value)}
+          rows={4} disabled={!canEdit} aria-label="หมายเหตุ" placeholder="หมายเหตุ (ถ้ามี)" />
+      </Sheet>
       <Sheet
         open={editingLineIndex !== null}
         title="แก้ไขรายการ"

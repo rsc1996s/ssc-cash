@@ -41,8 +41,15 @@ export default function TransfersHub() {
 
   return (
     <Layout>
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <h1 className="text-lg font-semibold">{isOwner ? "โอนจ่าย (ไม่ใช่เงินสด)" : "ใบเบิกเงินโอน"}</h1>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold">{isOwner ? "โอนจ่าย" : "ใบเบิกเงินโอน"}</h1>
+          <p className="mt-1 text-sm text-inkSoft">จัดการใบเบิกและเอกสารโอนจ่าย</p>
+        </div>
+        <Link to={(!isOwner || tab === "withdrawals") ? "/transfers/withdrawals/new" : "/transfers/payments/new"}
+          className="inline-flex min-h-11 items-center rounded-lg bg-primary px-4 text-sm font-semibold text-white hover:bg-primary-dark">
+          {(!isOwner || tab === "withdrawals") ? "+ สร้างใบเบิกใหม่" : "+ สร้างใบโอนจ่ายใหม่"}
+        </Link>
       </div>
 
       {isOwner && (
@@ -60,13 +67,8 @@ export default function TransfersHub() {
 
       {(!isOwner || tab === "withdrawals") ? (
         <>
-          <div className="flex justify-end mb-3">
-            <Link to="/transfers/withdrawals/new" className="text-sm bg-primary text-white rounded px-3 py-1.5 font-medium">
-              + สร้างใบเบิกใหม่
-            </Link>
-          </div>
           {withdrawals.length === 0 ? (
-            <p className="text-sm text-inkSoft">ยังไม่มีใบเบิก</p>
+            <p className="rounded-xl border border-paperLine bg-white p-4 text-sm text-inkSoft">ยังไม่มีใบเบิก เลือกสร้างใบเบิกใหม่เพื่อเริ่มต้น</p>
           ) : (
             <div className="space-y-3">
               {withdrawals.slice(0, visibleCount).map((w) => {
@@ -104,7 +106,7 @@ export default function TransfersHub() {
                     <Link
                       to={`/transfers/withdrawals/${w.id}/print`}
                       target="_blank"
-                      className="shrink-0 text-xs border border-paperLine rounded px-3 py-2 hover:border-primary hover:text-primary"
+                      className="inline-flex min-h-11 shrink-0 items-center rounded-lg border border-paperLine px-3 text-xs hover:border-primary hover:text-primary"
                     >
                       พิมพ์
                     </Link>
@@ -121,13 +123,8 @@ export default function TransfersHub() {
         </>
       ) : (
         <>
-          <div className="flex justify-end mb-3">
-            <Link to="/transfers/payments/new" className="text-sm bg-primary text-white rounded px-3 py-1.5 font-medium">
-              + สร้างใบโอนจ่ายใหม่
-            </Link>
-          </div>
           {payments.length === 0 ? (
-            <p className="text-sm text-inkSoft">ยังไม่มีใบโอนจ่าย</p>
+            <p className="rounded-xl border border-paperLine bg-white p-4 text-sm text-inkSoft">ยังไม่มีใบโอนจ่าย เลือกสร้างใบโอนจ่ายใหม่เพื่อเริ่มต้น</p>
           ) : (
             <div className="space-y-3">
               {payments.slice(0, visibleCount).map((p) => (
@@ -152,7 +149,7 @@ export default function TransfersHub() {
                   <Link
                     to={`/transfers/payments/${p.id}/print`}
                     target="_blank"
-                    className="shrink-0 text-xs border border-paperLine rounded px-3 py-2 hover:border-primary hover:text-primary"
+                    className="inline-flex min-h-11 shrink-0 items-center rounded-lg border border-paperLine px-3 text-xs hover:border-primary hover:text-primary"
                   >
                     พิมพ์
                   </Link>

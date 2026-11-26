@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import Layout from "../components/Layout";
 import StatusBadge from "../components/ui/StatusBadge";
@@ -16,13 +16,12 @@ import { downloadCsv } from "../components/csvExport";
 import { evidencePhotos } from "../lib/evidence";
 import useScopedCashData from "../hooks/useScopedCashData";
 import FundDashboard from "../components/FundDashboard";
+import Button from "../components/ui/Button";
 
 export default function GuestDashboard() {
   const { transactions, loading, funds, topups, error, empty } = useScopedCashData();
   const rows = useMemo(() => transactions.filter((row) => row.status === "approved"), [transactions]);
-  const [visibleCount, setVisibleCount] = useState(10);
-
-  const { filters, updateFilter, clearFilters, filtered, categories, authors, totals } =
+  const { filters, updateFilter, clearFilters, filtered, categories, authors, totals, visibleCount, setVisibleCount } =
     useTransactionFilters(rows);
   const filteredRows = filtered.slice().sort(
     (a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0)
@@ -43,7 +42,10 @@ export default function GuestDashboard() {
   );
 
   if (loading) return <Layout><Loading label="กำลังโหลดงบที่คุณดูแล" /></Layout>;
-  if (error) return <Layout><p role="alert" className="text-sm text-danger">โหลดข้อมูลงบไม่สำเร็จ กรุณาตรวจสอบสิทธิ์และการเชื่อมต่อ</p></Layout>;
+  if (error) return <Layout><div role="alert" className="rounded-xl border border-paperLine bg-white p-4">
+    <p className="text-sm text-danger">โหลดข้อมูลงบไม่สำเร็จ กรุณาตรวจสอบสิทธิ์และการเชื่อมต่อ</p>
+    <Button variant="secondary" className="mt-3" onClick={() => window.location.reload()}>ลองใหม่</Button>
+  </div></Layout>;
 
   return (
     <Layout>
@@ -118,7 +120,7 @@ export default function GuestDashboard() {
               <Link
                 to={`/transaction/${r.id}/print`}
                 target="_blank"
-                className="shrink-0 text-xs border border-paperLine rounded px-3 py-2 hover:border-primary hover:text-primary"
+                className="inline-flex min-h-11 shrink-0 items-center rounded-lg border border-paperLine px-3 text-xs hover:border-primary hover:text-primary"
               >
                 พิมพ์
               </Link>

@@ -18,6 +18,8 @@ import ReceiptPhotoFields from "../components/ReceiptPhotoFields";
 import useScopedCashData from "../hooks/useScopedCashData";
 import useCategories from "../hooks/useCategories";
 import { isActiveFund } from "../lib/cashStatus";
+import { matchingTopups } from "../components/incomeDuplicates";
+import PossibleIncomeDuplicates from "../components/PossibleIncomeDuplicates";
 
 const TOTAL_PHOTO_KB_WARNING = 700;
 
@@ -46,7 +48,7 @@ export default function NewTransaction() {
   const navigate = useNavigate();
   const { confirm, toast } = useFeedback();
   const [form, setForm] = useState(emptyForm);
-  const { funds: allFunds, loading: fundsLoading, error: fundsError } = useScopedCashData();
+  const { funds: allFunds, topups, loading: fundsLoading, error: fundsError } = useScopedCashData();
   const funds = useMemo(() => allFunds.filter(isActiveFund), [allFunds]);
   const { categories, error: categoriesError } = useCategories();
   const receipt = useReceiptPhotos();
@@ -72,6 +74,9 @@ export default function NewTransaction() {
 
   const totalPhotoKb =
     receiptPhotos.reduce((s, p) => s + p.kb, 0) + (changePhoto ? changePhoto.kb : 0);
+  const possibleTopups = form.type === "income"
+    ? matchingTopups({ fundId: form.fundId, amount: form.amount, date: form.transactionDate }, topups)
+    : [];
   const dirty = Object.keys(emptyForm).some((key) => key !== "fundId" && form[key] !== emptyForm[key]) ||
     (funds.length > 0 && form.fundId !== funds[0].id) ||
     receiptPhotos.length > 0 || Boolean(changePhoto);
@@ -85,6 +90,17 @@ export default function NewTransaction() {
       danger: true,
     })) return;
     navigate("/");
+  }
+
+  async function goToTopup() {
+    if (dirty && !await confirm({
+      title: "ไปเติมเงินเข้างบ",
+      description: "ข้อมูลรายการที่ยังไม่ได้บันทึกจะหายไป",
+      confirmLabel: "ทิ้งข้อมูลและไปต่อ",
+      cancelLabel: "ทำรายการต่อ",
+      danger: true,
+    })) return;
+    navigate("/admin/funds");
   }
 
   async function handleChangePhotoSelect(file) {
@@ -136,6 +152,15 @@ export default function NewTransaction() {
     }
 
     setBusy(true);
+    if (possibleTopups.length && !await confirm({
+      title: "ตรวจสอบเงินเข้าที่อาจซ้ำ",
+      description: "พบเงินเติมงบที่มีงบ วันที่ และจำนวนเงินตรงกัน หากเป็นเงินก้อนเดียวกันไม่ควรบันทึกซ้ำ",
+      confirmLabel: "เป็นคนละรายการ บันทึกต่อ",
+      cancelLabel: "กลับไปตรวจสอบ",
+    })) {
+      setBusy(false);
+      return;
+    }
     try {
       const fundLabel = funds.find((f) => f.id === form.fundId)?.label || "";
 
@@ -214,7 +239,7 @@ export default function NewTransaction() {
           />
           <fieldset>
             <legend className="mb-2 text-sm font-semibold">ประเภท</legend>
-            <div className="grid grid-cols-2 gap-2">
+            <div className={`grid grid-cols-2 gap-2 ${profile?.role === "owner" ? "sm:grid-cols-3" : ""}`}>
               {["income", "expense"].map((type) => (
                 <button
                   type="button"
@@ -232,8 +257,24 @@ export default function NewTransaction() {
                   {type === "income" ? "รายรับ" : "รายจ่าย"}
                 </button>
               ))}
+              {profile?.role === "owner" && (
+                <button type="button" onClick={goToTopup}
+                  className="col-span-2 min-h-11 rounded-xl border border-paperLine bg-white px-3 py-3 text-base font-semibold text-primary-dark sm:col-span-1">
+                  เติมเงินเข้างบ
+                </button>
+              )}
             </div>
           </fieldset>
+
+          {form.type === "income" && (
+            <div className="space-y-2 rounded-lg border border-paperLine bg-paper p-3 text-sm">
+              <p>รายรับใช้สำหรับเงินที่ได้รับจากการดำเนินงาน และจะเพิ่มยอดงบเมื่ออนุมัติแล้ว</p>
+              <p>ถ้าเป็นเงินที่เจ้าของจัดสรรมาใช้จ่าย ให้เลือกเติมเงินเข้างบแทน เงินก้อนเดียวกันบันทึกเพียงครั้งเดียว</p>
+              <p className="text-inkSoft">{profile?.role === "owner"
+                ? "เลือก “เติมเงินเข้างบ” ด้านบน แล้วเลือกงบที่ต้องการ"
+                : "การเติมเงินเข้างบทำได้โดยเจ้าของร้าน"}</p>
+            </div>
+          )}
 
           <div className="grid gap-2 rounded-xl border border-paperLine bg-blue-50/60 p-3 sm:grid-cols-2 sm:items-end">
             <div>
@@ -325,6 +366,8 @@ export default function NewTransaction() {
               ariaLabel="งบค่าใช้จ่าย"
             />
           </div>
+
+          <PossibleIncomeDuplicates entries={possibleTopups} kind="topup" />
 
           <div>
             <p className="mb-2 block text-sm font-semibold">แนบหลักฐาน (ไม่บังคับ — ผู้ตรวจสอบอาจขอดูภายหลัง)</p>

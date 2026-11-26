@@ -20,6 +20,7 @@ import useReceiptPhotos from "../components/useReceiptPhotos";
 import { canRequestEvidence, canSubmitEvidence, evidencePhotos, evidenceSizeValid } from "../lib/evidence";
 import { canViewFund } from "../lib/fundAccess";
 import VoidReasonSheet from "../components/VoidReasonSheet";
+import Loading from "../components/ui/Loading";
 
 const EDITABLE_FIELDS = [
   { key: "amount", label: "จำนวนเงิน", type: "number" },
@@ -79,7 +80,7 @@ export default function TransactionDetail() {
   if (!tx || tx.id !== id) {
     return (
       <Layout>
-        <p className="text-sm text-inkSoft">กำลังโหลด...</p>
+        <Loading label="กำลังโหลดรายละเอียดรายการ" />
       </Layout>
     );
   }

@@ -1,5 +1,5 @@
 export function Skeleton({ className = "" }) {
-  return <div aria-hidden="true" className={`animate-pulse rounded-lg bg-blue-100 ${className}`} />;
+  return <div aria-hidden="true" className={`animate-pulse rounded-lg bg-slate-200 ${className}`} />;
 }
 
 export default function Loading({ label = "กำลังโหลด..." }) {

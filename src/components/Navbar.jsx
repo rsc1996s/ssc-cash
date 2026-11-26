@@ -130,6 +130,7 @@ export default function Navbar() {
                 <NavigationLink
                   key={item.label}
                   to={item.to}
+                  aria-current={isActive(item.to) ? "page" : undefined}
                   onClick={() => setMenuOpen(false)}
                   className={`flex items-center gap-3 px-3 py-3.5 rounded-lg text-sm font-medium ${
                     isActive(item.to) ? "bg-blue-50 text-blue-700" : "text-ink hover:bg-blue-50"

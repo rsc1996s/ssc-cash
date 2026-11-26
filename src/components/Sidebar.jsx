@@ -86,8 +86,9 @@ export default function Sidebar() {
           <NavigationLink
             key={item.label}
             to={item.to}
+            aria-current={isActive(item.to) ? "page" : undefined}
             className={`flex min-h-11 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus ${
-              isActive(item.to) ? "bg-blue-50 text-blue-700" : "text-inkSoft hover:text-blue-700 hover:bg-blue-50"
+              isActive(item.to) ? "bg-primary-light font-semibold text-primary-dark" : "text-inkSoft hover:text-blue-700 hover:bg-blue-50"
             }`}
           >
             <item.icon size={20} strokeWidth={1.5} />

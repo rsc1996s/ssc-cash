@@ -3,6 +3,16 @@
 @tailwind utilities;
 
 :root {
+  --neutral-50: 248 250 252;
+  --neutral-100: 241 245 249;
+  --neutral-200: 226 232 240;
+  --neutral-300: 203 213 225;
+  --neutral-400: 148 163 184;
+  --neutral-500: 100 116 139;
+  --neutral-600: 71 85 105;
+  --neutral-700: 51 65 85;
+  --neutral-800: 30 41 59;
+  --neutral-900: 15 23 42;
   --paper: 245 249 255;
   --surface: 255 255 255;
   --line: 215 227 243;
@@ -17,6 +27,17 @@
   --danger-light: 254 242 242;
   --income: 21 128 61;
   --expense: 185 28 28;
+  --success: var(--income);
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --radius-control: 8px;
+  --radius-card: 16px;
+  --shadow-card: 0 1px 3px rgb(23 43 77 / 8%);
+  --shadow-overlay: 0 12px 32px rgb(23 43 77 / 16%);
   --glass: 255 255 255;
   --glow: 34 211 238;
 }
@@ -109,7 +130,7 @@ select,
 textarea {
   min-height: 44px;
   border-color: rgb(var(--line));
-  border-radius: 0.75rem;
+  border-radius: var(--radius-control);
   background-color: rgb(var(--surface));
   color: rgb(var(--ink));
   font-size: 1rem;

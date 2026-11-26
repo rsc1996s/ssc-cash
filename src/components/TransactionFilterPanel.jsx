@@ -28,15 +28,21 @@ export default function TransactionFilterPanel({
   statusOptions = Object.entries(STATUS_LABEL).map(([value, label]) => ({ value, label })),
   onExport,
   showTotals = true,
+  compact = false,
+  heading,
 }) {
   const [open, setOpen] = useState(false);
   const hasFilters = filters.search || filters.datePreset !== "all" ||
-    filters.fund !== "all" || filters.category !== "all" || filters.status !== "all" || filters.author !== "all";
+    filters.fund !== "all" || filters.category !== "all" || filters.status !== "all" || filters.author !== "all" ||
+    filters.evidence === "missing";
 
   return (
-    <section className="mb-4 rounded-xl border border-paperLine bg-white p-3 shadow-sm sm:p-4">
-      <div className="flex items-center gap-2">
-        <div className="relative min-w-0 flex-1">
+    <section className={compact
+      ? "sticky top-[calc(3.5rem+env(safe-area-inset-top))] z-10 mb-2 rounded-xl border border-paperLine bg-white p-2 shadow-sm lg:top-0"
+      : "mb-4 rounded-xl border border-paperLine bg-white p-3 shadow-sm sm:p-4"}>
+      <div className={compact ? "flex flex-wrap items-center gap-2" : "flex items-center gap-2"}>
+        {heading}
+        <div className={compact ? "relative min-w-[7rem] flex-1" : "relative min-w-0 flex-1"}>
           <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-inkSoft" />
           <Input
             value={filters.search}
@@ -60,6 +66,10 @@ export default function TransactionFilterPanel({
             ส่งออก
           </Button>
         )}
+        {compact && showTotals && <div className="flex flex-wrap gap-4 text-sm font-semibold font-nums">
+          <span className="text-green-800">รับ {totals.income.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          <span className="text-red-700">จ่าย {totals.expense.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+        </div>}
       </div>
 
       <Sheet
@@ -149,13 +159,13 @@ export default function TransactionFilterPanel({
         </div>
       </Sheet>
 
-      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-paperLine pt-2 text-sm">
+      {!compact && <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-paperLine pt-2 text-sm">
         <span className="text-inkSoft">พบ {count} รายการ</span>
         {showTotals && <div className="flex gap-4 font-semibold">
           <span className="text-green-800">รับ {totals.income.toLocaleString("th-TH", { minimumFractionDigits: 2 })}</span>
           <span className="text-red-700">จ่าย {totals.expense.toLocaleString("th-TH", { minimumFractionDigits: 2 })}</span>
         </div>}
-      </div>
+      </div>}
     </section>
   );
 }

@@ -1,46 +1,47 @@
 import { useEffect, useId, useRef } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
+
+const openSheets = new Set();
+let originalOverflow = "";
+let cleanupTimer;
+
+function cleanClosedHistoryEntries() {
+  window.clearTimeout(cleanupTimer);
+  cleanupTimer = window.setTimeout(() => {
+    const stack = window.history.state?.__uiOverlayStack || [];
+    let count = 0;
+    for (let index = stack.length - 1; index >= 0 && !openSheets.has(stack[index]); index -= 1) count += 1;
+    if (count) window.history.go(-count);
+  }, 0);
+}
 
 export default function Sheet({ open, title, onClose, children, footer, header }) {
   const touchStartY = useRef(null);
   const token = `sheet-${useId()}`;
-  const openRef = useRef(open);
   const onCloseRef = useRef(onClose);
   const historyAdded = useRef(false);
-  const backPending = useRef(false);
-  openRef.current = open;
   onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!open) return undefined;
-    const previousOverflow = document.body.style.overflow;
+    if (openSheets.size === 0) originalOverflow = document.body.style.overflow;
+    openSheets.add(token);
     document.body.style.overflow = "hidden";
     if (window.history.state?.__uiOverlay !== token) {
-      window.history.pushState({ ...(window.history.state || {}), __uiOverlay: token }, "");
+      const state = window.history.state || {};
+      window.history.pushState({ ...state, __uiOverlay: token, __uiOverlayStack: [...(state.__uiOverlayStack || []), token] }, "");
     }
     historyAdded.current = true;
     function onKeyDown(event) {
       if (event.key === "Escape" && window.history.state?.__uiOverlay === token) requestClose();
     }
     function onPopState(event) {
-      if (event.state?.__uiOverlay === token) return;
-      if (backPending.current) {
-        backPending.current = false;
-        if (openRef.current && !event.state?.__uiOverlay) {
-          window.history.pushState({ ...(event.state || {}), __uiOverlay: token }, "");
-        }
-        return;
-      }
-      backPending.current = true;
+      if (event.state?.__uiOverlayStack?.includes(token)) return;
+      if ([...openSheets].at(-1) !== token) return;
+      const state = event.state || {};
+      window.history.pushState({ ...state, __uiOverlay: token, __uiOverlayStack: [...(state.__uiOverlayStack || []), token] }, "");
       onCloseRef.current();
-      window.setTimeout(() => {
-        if (!openRef.current) {
-          backPending.current = false;
-        } else if (!window.history.state?.__uiOverlay) {
-          window.history.pushState({ ...(window.history.state || {}), __uiOverlay: token }, "");
-          backPending.current = false;
-        }
-      }, 0);
     }
     function requestClose() {
       if (historyAdded.current && window.history.state?.__uiOverlay === token) {
@@ -52,24 +53,17 @@ export default function Sheet({ open, title, onClose, children, footer, header }
     document.addEventListener("keydown", onKeyDown);
     window.addEventListener("popstate", onPopState);
     return () => {
-      document.body.style.overflow = previousOverflow;
+      openSheets.delete(token);
+      if (openSheets.size === 0) document.body.style.overflow = originalOverflow;
       document.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("popstate", onPopState);
+      cleanClosedHistoryEntries();
     };
-  }, [open, token]);
-
-  useEffect(() => {
-    if (open) return;
-    if (historyAdded.current && window.history.state?.__uiOverlay === token) {
-      window.history.back();
-    }
-    historyAdded.current = false;
-    backPending.current = false;
   }, [open, token]);
 
   if (!open) return null;
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 sm:items-center sm:p-4"
       onMouseDown={(event) => {
@@ -79,7 +73,7 @@ export default function Sheet({ open, title, onClose, children, footer, header }
       <section
         role="dialog"
         aria-modal="true"
-        aria-labelledby={header ? undefined : "sheet-title"}
+        aria-labelledby={header ? undefined : `${token}-title`}
         aria-label={header ? title : undefined}
         className="flex max-h-[85dvh] w-full flex-col overflow-hidden rounded-t-2xl border border-paperLine bg-white shadow-xl sm:max-w-xl sm:rounded-2xl"
         onTouchStart={(event) => {
@@ -101,7 +95,7 @@ export default function Sheet({ open, title, onClose, children, footer, header }
           {header || (
             <div className="border-b border-paperLine bg-white px-4 pb-3 pt-1 sm:pt-4">
               <div className="flex min-h-11 items-center justify-between gap-3">
-                <h2 id="sheet-title" className="min-w-0 flex-1 truncate text-lg font-semibold">{title}</h2>
+                <h2 id={`${token}-title`} className="min-w-0 flex-1 truncate text-lg font-semibold">{title}</h2>
                 <button type="button" aria-label="ปิด" onClick={closeSheet} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-inkSoft hover:bg-blue-50">
                   <X size={20} />
                 </button>
@@ -112,7 +106,8 @@ export default function Sheet({ open, title, onClose, children, footer, header }
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4">{children}</div>
         {footer && <div className="shrink-0 border-t border-paperLine bg-white px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">{footer}</div>}
       </section>
-    </div>
+    </div>,
+    document.body
   );
 
   function closeSheet() {

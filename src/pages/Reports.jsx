@@ -11,6 +11,7 @@ import { downloadCsv } from "../components/csvExport";
 import useTransactionFilters from "../components/useTransactionFilters";
 import TransactionFilterPanel from "../components/TransactionFilterPanel";
 import Loading from "../components/ui/Loading";
+import Button from "../components/ui/Button";
 import SegmentedTabs from "../components/ui/SegmentedTabs";
 import SearchPicker from "../components/ui/SearchPicker";
 import useScopedCashData from "../hooks/useScopedCashData";
@@ -128,7 +129,10 @@ export default function Reports() {
   };
 
   if (loading) return <Layout><Loading label="กำลังโหลดรายงาน" /></Layout>;
-  if (loadError) return <Layout><p role="alert" className="text-sm text-danger">{loadError}</p></Layout>;
+  if (loadError) return <Layout><div role="alert" className="rounded-xl border border-paperLine bg-white p-4">
+    <p className="text-sm text-danger">{loadError}</p>
+    <Button variant="secondary" className="mt-3" onClick={() => window.location.reload()}>ลองใหม่</Button>
+  </div></Layout>;
 
   return (
     <Layout>
@@ -269,6 +273,10 @@ export default function Reports() {
           <dl className="grid grid-cols-2 gap-y-1 text-sm max-w-xs ml-auto font-nums">
             <dt className="text-inkSoft">ยอดยกมา</dt>
             <dd className="text-right">{formatBaht(statement.openingBalance)}</dd>
+            <dt className="text-inkSoft">เติมงบ (ช่วงนี้)</dt>
+            <dd className="text-right">{formatBaht(statement.entries.filter((entry) => entry.kind === "topup").reduce((sum, entry) => sum + Number(entry.amount), 0))}</dd>
+            <dt className="text-inkSoft">รายรับที่อนุมัติ (ช่วงนี้)</dt>
+            <dd className="text-right">{formatBaht(statement.entries.filter((entry) => entry.kind === "income").reduce((sum, entry) => sum + Number(entry.amount), 0))}</dd>
             <dt className="text-inkSoft">เงินเข้ารวม (ช่วงนี้)</dt>
             <dd className="text-right text-primary">+{formatBaht(statement.totalIn)}</dd>
             <dt className="text-inkSoft">เงินออกรวม (ช่วงนี้)</dt>

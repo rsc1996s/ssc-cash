@@ -12,6 +12,7 @@ import {
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
 import Layout from "../components/Layout";
+import Loading from "../components/ui/Loading";
 import { formatBaht } from "../lib/format";
 import { nextDocNumber } from "../lib/counters";
 import { lineTotal, renumberLines, remainingBalance } from "../lib/transfers";
@@ -58,6 +59,7 @@ export default function TransferPaymentForm() {
   const [error, setError] = useState("");
   const [dirty, setDirty] = useState(false);
   const paymentVersion = useRef(null);
+  const linesRef = useRef(null);
 
   useEffect(() => {
     const failed = (err) => {
@@ -138,6 +140,7 @@ export default function TransferPaymentForm() {
   function addLine() {
     setDirty(true);
     setLines((ls) => [...ls, emptyLine(ls.length + 1)]);
+    requestAnimationFrame(() => { if (linesRef.current) linesRef.current.scrollTop = linesRef.current.scrollHeight; });
   }
 
   function removeLine(idx) {
@@ -175,7 +178,7 @@ export default function TransferPaymentForm() {
     });
     if (invalidLine !== -1) {
       setError(`กรุณาตรวจสอบบัญชีปลายทางและยอดเงินของรายการที่ ${invalidLine + 1}`);
-      document.getElementById(window.matchMedia("(min-width: 768px)").matches
+      document.getElementById(window.matchMedia("(min-width: 1024px)").matches
         ? `payment-payee-desktop-${invalidLine}` : `payment-payee-mobile-${invalidLine}`)?.focus();
       return;
     }
@@ -195,7 +198,7 @@ export default function TransferPaymentForm() {
     if (cleanLines.length === 0) {
       setError("กรุณาเพิ่มอย่างน้อย 1 รายการ พร้อมเลือกบัญชีปลายทาง");
       document.getElementById(
-        window.matchMedia("(min-width: 768px)").matches
+        window.matchMedia("(min-width: 1024px)").matches
           ? "payment-payee-desktop-0"
           : "payment-payee-mobile-0"
       )?.focus();
@@ -310,7 +313,7 @@ export default function TransferPaymentForm() {
   if (!loaded) {
     return (
       <Layout>
-        <p className="text-sm text-inkSoft">กำลังโหลด...</p>
+        <Loading label="กำลังโหลดใบโอนจ่าย" />
       </Layout>
     );
   }
@@ -400,8 +403,8 @@ export default function TransferPaymentForm() {
           </div>
         )}
 
-        {/* มือถือ: การ์ดแนวตั้งต่อ 1 บรรทัด */}
-        <div className="md:hidden space-y-3 mb-3">
+        <div ref={linesRef} className="mb-3 max-h-[45dvh] min-h-0 overflow-y-auto overscroll-contain rounded-lg border border-paperLine p-2" aria-label="รายการโอนจ่าย" tabIndex={0}>
+        <div className="lg:hidden space-y-3">
           {lines.map((l, idx) => (
             <div key={idx} className="border border-paperLine rounded-lg p-3 bg-paper/40">
               <div className="flex items-center justify-between mb-2">
@@ -455,9 +458,9 @@ export default function TransferPaymentForm() {
         </div>
 
         {/* จอกลาง/ใหญ่: ตารางปกติ */}
-        <div className="hidden md:block mb-2 overflow-x-auto">
-          <table className="w-full text-sm min-w-[680px]">
-            <thead>
+        <div className="hidden lg:block">
+          <table className="w-full table-fixed text-sm">
+            <thead className="sticky top-0 z-10 bg-white">
               <tr className="text-left text-xs text-inkSoft border-b border-paperLine">
                 <th className="py-2 w-10">ลำดับ</th>
                 <th className="py-2 w-36">วันที่โอน</th>
@@ -524,6 +527,7 @@ export default function TransferPaymentForm() {
               </Link>
             </p>
           )}
+        </div>
         </div>
 
         <button onClick={addLine} className="text-sm border border-paperLine rounded px-3 py-1.5 mb-4">

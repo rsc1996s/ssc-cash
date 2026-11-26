@@ -6,6 +6,7 @@ import { formatBaht, formatDateTime, TYPE_LABEL, PAYMENT_LABEL, STATUS_LABEL } f
 import { evidencePhotos } from "../lib/evidence";
 import { useAuth } from "../context/AuthContext";
 import { canViewFund } from "../lib/fundAccess";
+import Loading from "../components/ui/Loading";
 
 export default function PrintVoucher() {
   const { id } = useParams();
@@ -36,7 +37,7 @@ export default function PrintVoucher() {
   }
 
   if (!tx || tx.id !== id) {
-    return <p className="p-6 text-sm text-inkSoft">กำลังโหลด...</p>;
+    return <div className="p-6"><Loading label="กำลังโหลดใบเบิกเงินสด" /></div>;
   }
 
   if (tx.status !== "approved") {

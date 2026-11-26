@@ -17,6 +17,7 @@ import SearchPicker from "../components/ui/SearchPicker";
 import useScopedCashData from "../hooks/useScopedCashData";
 import { bangkokDate } from "../lib/businessDate";
 import { isActiveFund } from "../lib/cashStatus";
+import Sheet from "../components/ui/Sheet";
 
 function closingKey(closing) {
   return `${closing.fundId}:${closing.businessDate}`;
@@ -38,6 +39,7 @@ export default function DailyClosings() {
   const [variance, setVariance] = useState(null);
   const [result, setResult] = useState(null);
   const [visibleCount, setVisibleCount] = useState(10);
+  const [formOpen, setFormOpen] = useState(false);
 
   useEffect(() => {
     if (!loadingFunds) setFundId((current) => funds.some((fund) => fund.id === current) ? current : funds[0]?.id || "");
@@ -117,6 +119,7 @@ export default function DailyClosings() {
       setCountedCash("");
       setReason("");
       setCorrection(null);
+      setFormOpen(false);
       toast("บันทึกปิดยอดแล้ว");
     } catch (submitError) {
       console.error("บันทึกปิดยอดไม่สำเร็จ:", submitError);
@@ -141,6 +144,7 @@ export default function DailyClosings() {
     setVariance(null);
     setResult(null);
     setError("");
+    setFormOpen(true);
   }
 
   const selectedFund = funds.find((fund) => fund.id === fundId);
@@ -158,6 +162,7 @@ export default function DailyClosings() {
     setReason("");
     setCorrection(null);
     setError("");
+    setFormOpen(false);
   }
 
   return (
@@ -169,16 +174,18 @@ export default function DailyClosings() {
         </p>
       </div>
 
-      <Card className="mb-5 p-4 sm:p-5">
+      <Button className="mb-4" onClick={() => { setResult(null); setFormOpen(true); }}>+ ปิดยอดเงินสด</Button>
+      {result && (
+        <div role="status" className="mb-4 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800">
+          บันทึกปิดยอดแล้ว · ระบบ {formatBaht(result.expectedBalance)} บาท · นับได้ {formatBaht(result.countedCash)} บาท · ส่วนต่าง {result.difference > 0 ? "+" : ""}{formatBaht(result.difference)} บาท
+        </div>
+      )}
+      {!formOpen && error && <p role="alert" className="mb-4 text-sm text-danger">{error}</p>}
+      <Sheet open={formOpen} title={correction ? "แก้ไขยอดปิดประจำวัน" : "ปิดยอดเงินสด"} onClose={cancelForm}
+        header={<FormHeader title={correction ? "แก้ไขยอดปิดประจำวัน" : "ปิดยอดเงินสด"}
+          onCancel={cancelForm} formId="daily-closing-form" saving={busy}
+          saveDisabled={loadingFunds || funds.length === 0} saveLabel="บันทึก" />}>
         <form id="daily-closing-form" onSubmit={submit} className="space-y-4">
-          <FormHeader
-            title={correction ? "แก้ไขยอดปิดประจำวัน" : "ปิดยอดเงินสด"}
-            onCancel={cancelForm}
-            formId="daily-closing-form"
-            saving={busy}
-            saveLabel="บันทึก"
-            saveDisabled={loadingFunds || funds.length === 0}
-          />
           {correction && (
             <div className="rounded-lg border border-warning/30 bg-warning-light p-3 text-sm text-warning">
               กำลังแก้ไขยอดวันที่ {correction.businessDate} · ครั้งที่ {correction.revision + 1}
@@ -254,16 +261,8 @@ export default function DailyClosings() {
             </div>
           )}
           {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
-          {result && (
-            <div role="status" className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800">
-              บันทึกปิดยอดแล้ว · ระบบ {formatBaht(result.expectedBalance)} บาท · นับได้{" "}
-              {formatBaht(result.countedCash)} บาท · ส่วนต่าง{" "}
-              {result.difference > 0 ? "+" : ""}{formatBaht(result.difference)} บาท
-            </div>
-          )}
-
         </form>
-      </Card>
+      </Sheet>
 
       {isOwner ? (
         <section>
@@ -279,19 +278,20 @@ export default function DailyClosings() {
           ) : (
             <div className="space-y-3">
               {latestClosings.slice(0, visibleCount).map((closing) => (
-                <Card key={closing.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
-                  <div className="min-w-0">
+                <Card key={closing.id} className="grid gap-4 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                  <div className="min-w-0 break-words">
                     <p className="font-semibold">{closing.fundLabel} · {closing.businessDate}</p>
                     <p className="mt-1 text-sm text-inkSoft">
-                      คาด {formatBaht(closing.expectedBalance)} · นับได้ {formatBaht(closing.countedCash)} ·{" "}
-                      {closing.difference > 0 ? "+" : ""}{formatBaht(closing.difference)} บาท
+                      คาด <span className="font-nums">{formatBaht(closing.expectedBalance)}</span> · นับได้{" "}
+                      <span className="font-nums">{formatBaht(closing.countedCash)}</span> ·{" "}
+                      <span className="font-nums">{closing.difference > 0 ? "+" : ""}{formatBaht(closing.difference)}</span> บาท
                     </p>
                     <p className="mt-1 text-xs text-inkSoft">
                       ครั้งที่ {closing.revision} · {closing.createdByName} · {formatDateTime(closing.createdAt)}
                     </p>
                     {closing.reason && <p className="mt-1 text-sm">เหตุผล: {closing.reason}</p>}
                   </div>
-                  <Button variant="secondary" onClick={() => startCorrection(closing)}>
+                  <Button variant="secondary" className="w-full sm:w-auto" onClick={() => startCorrection(closing)}>
                     แก้ไขเป็นรายการใหม่
                   </Button>
                 </Card>

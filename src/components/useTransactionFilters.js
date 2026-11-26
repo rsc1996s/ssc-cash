@@ -1,4 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useLocation } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
 function rowDate(row) {
   const value = row.createdAt || row.reviewedAt || row.date;
@@ -38,7 +40,10 @@ export default function useTransactionFilters(rows, {
   initialToDate = "",
   getToday = currentDate,
 } = {}) {
-  const [filters, setFilters] = useState(() => ({
+  const { user, profile } = useAuth();
+  const location = useLocation();
+  const storageKey = `cash-filters:${user?.uid}:${profile?.role}:${location.pathname}`;
+  const defaults = {
     search: "",
     datePreset: initialDatePreset,
     fromDate: initialFromDate,
@@ -47,7 +52,35 @@ export default function useTransactionFilters(rows, {
     category: "all",
     status: initialStatus,
     author: "all",
-  }));
+  };
+  const [filters, setFilters] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem(storageKey);
+      if (!saved) return defaults;
+      const { __visibleCount, ...savedFilters } = JSON.parse(saved);
+      return { ...defaults, ...savedFilters };
+    } catch (error) {
+      console.error("ไม่สามารถเรียกคืนตัวกรอง:", error);
+      return defaults;
+    }
+  });
+  const [visibleCount, setVisibleCount] = useState(() => {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(storageKey) || "null");
+      return Number.isInteger(saved?.__visibleCount) && saved.__visibleCount >= 10 ? saved.__visibleCount : 10;
+    } catch (error) {
+      console.error("ไม่สามารถเรียกคืนจำนวนรายการ:", error);
+      return 10;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(storageKey, JSON.stringify({ ...filters, __visibleCount: visibleCount }));
+    } catch (error) {
+      console.error("ไม่สามารถเก็บตัวกรอง:", error);
+    }
+  }, [storageKey, filters, visibleCount]);
 
   const categories = useMemo(
     () => [...new Set(rows.map((row) => row.category).filter(Boolean))].sort((a, b) => a.localeCompare(b, "th")),
@@ -102,5 +135,5 @@ export default function useTransactionFilters(rows, {
     });
   }
 
-  return { filters, updateFilter, clearFilters, filtered, categories, authors, totals };
+  return { filters, updateFilter, clearFilters, filtered, categories, authors, totals, visibleCount, setVisibleCount };
 }

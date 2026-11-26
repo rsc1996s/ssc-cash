@@ -8,6 +8,7 @@ import PrintSheet from "../components/PrintSheet";
 import WithdrawalRequestDocument from "../components/WithdrawalRequestDocument";
 import { withdrawalReportRows } from "../components/withdrawalReportData";
 import Button from "../components/ui/Button";
+import Loading from "../components/ui/Loading";
 
 export default function WithdrawalRequestPrint() {
   const { id } = useParams();
@@ -56,7 +57,7 @@ export default function WithdrawalRequestPrint() {
     return () => unsubscribe();
   }, [isOwner]);
 
-  if (loading) return <div className="p-8 text-inkSoft">กำลังโหลด...</div>;
+  if (loading) return <div className="p-8"><Loading label="กำลังโหลดใบเบิกสำหรับพิมพ์" /></div>;
   if (error || !request) return <div role="alert" className="p-8 text-danger">{error || "ไม่พบใบเบิกนี้"}</div>;
 
   function exportCsv() {
