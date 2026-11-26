@@ -1,0 +1,6 @@
+import{j as e}from"./index-Cvddu3hg.js";import{e as o,j as c,a as m}from"./App-DFtESGLl.js";/**
+ * @license lucide-react v0.383.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */const d=o("ArrowLeft",[["path",{d:"m12 19-7-7 7-7",key:"1l729n"}],["path",{d:"M19 12H5",key:"x3x0zl"}]]);function u({title:n,fallbackTo:s="/",right:i=null}){const t=c(),r=m();function l(){var a;if((a=t.state)!=null&&a.pageHeaderFallback){r(t.state.pageHeaderFallback,{replace:!0});return}if(t.key!=="default"){r(-1);return}r(s,{replace:!0})}return e.jsxs("header",{className:"sticky top-[calc(3.5rem+env(safe-area-inset-top))] z-20 -mx-4 mb-4 flex min-h-16 items-center gap-2 border-b border-paperLine bg-white px-4 py-2 shadow-sm sm:-mx-6 sm:px-6 lg:top-0 lg:mx-0 lg:rounded-xl lg:border lg:px-4",children:[e.jsx("button",{type:"button",onClick:l,"aria-label":"ย้อนกลับ",className:"flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg border border-paperLine text-ink hover:bg-blue-50",children:e.jsx(d,{size:20})}),e.jsx("h1",{className:"min-w-0 flex-1 truncate text-center text-base font-semibold sm:text-lg",children:n}),e.jsx("div",{className:"flex min-h-11 min-w-11 shrink-0 items-center justify-end",children:i})]})}export{u as P};

@@ -1,0 +1,1 @@
+import{j as a}from"./index-Cvddu3hg.js";function s({className:r="",children:e,...o}){return a.jsx("div",{className:`rounded-xl border border-paperLine bg-white shadow-card ${r}`,...o,children:e})}export{s as C};

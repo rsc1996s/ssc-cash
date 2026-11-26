@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { calculateFundDashboard, dashboardMonths, dashboardTransactionDate } from "../src/lib/dashboardCash.js";
+import { matchingIncomeTransactions, matchingTopups, possibleIncomeDuplicateGroups } from "../src/components/incomeDuplicates.js";
 
 const timestamp = (value) => ({ toDate: () => new Date(value) });
 
@@ -62,4 +63,29 @@ test("voided topups no longer contribute to dashboard balances", () => {
   const result = calculateFundDashboard(fund, topups, [], "2026-08");
   assert.equal(result.received, 50);
   assert.equal(result.balance, 150);
+});
+
+test("potential duplicate warnings match the same fund, business date and amount without treating voided or rejected entries as active", () => {
+  const topups = [
+    { id: "topup", fundId: "a", amount: 100, topupDate: timestamp("2026-08-03T17:00:00Z") },
+    { id: "old-topup", fundId: "a", amount: 100, createdAt: timestamp("2026-08-04T00:00:00Z") },
+    { id: "voided", fundId: "a", amount: 100, status: "voided", topupDate: timestamp("2026-08-04T00:00:00Z") },
+    { id: "other-fund", fundId: "b", amount: 100, topupDate: timestamp("2026-08-04T00:00:00Z") },
+  ];
+  const transactions = [
+    { id: "approved", fundId: "a", amount: 100, type: "income", status: "approved", transactionDate: "2026-08-04" },
+    { id: "pending", fundId: "a", amount: 100, type: "income", status: "pending", transactionDate: "2026-08-04" },
+    { id: "rejected", fundId: "a", amount: 100, type: "income", status: "rejected", transactionDate: "2026-08-04" },
+    { id: "expense", fundId: "a", amount: 100, type: "expense", status: "approved", transactionDate: "2026-08-04" },
+    { id: "other-day", fundId: "a", amount: 100, type: "income", status: "approved", transactionDate: "2026-08-05" },
+  ];
+  const draft = { fundId: "a", amount: "100.00", date: "2026-08-04" };
+  assert.deepEqual(matchingTopups(draft, topups).map((entry) => entry.id), ["topup", "old-topup"]);
+  assert.deepEqual(matchingIncomeTransactions(draft, transactions).map((entry) => entry.id), ["approved", "pending"]);
+  const groups = possibleIncomeDuplicateGroups(topups, transactions);
+  assert.equal(groups.length, 1);
+  assert.deepEqual(groups[0].topups.map((entry) => entry.id), ["topup", "old-topup"]);
+  assert.deepEqual(groups[0].incomes.map((entry) => entry.id), ["approved", "pending"]);
+  assert.deepEqual(matchingTopups({ ...draft, date: "2026-02-30" }, topups), []);
+  assert.deepEqual(matchingIncomeTransactions({ ...draft, amount: "" }, transactions), []);
 });
