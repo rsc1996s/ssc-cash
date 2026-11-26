@@ -8,9 +8,14 @@ import {
 } from "@firebase/rules-unit-testing";
 import firebase from "firebase/compat/app";
 import "firebase/compat/firestore";
+import { deleteApp, initializeApp as initializeAdminApp } from "firebase-admin/app";
+import { getFirestore } from "firebase-admin/firestore";
+import { archiveFund } from "../netlify/functions/archive-fund.mjs";
 
 const projectId = "demo-cash-ledger";
 let testEnv;
+let adminApp;
+let adminDb;
 const serverTimestamp = firebase.firestore.FieldValue.serverTimestamp;
 
 const validPhoto = "data:image/jpeg;base64,AAAA";
@@ -43,6 +48,18 @@ function transactionData(overrides = {}) {
     editHistory: [],
     ...overrides,
   };
+}
+
+function createTransaction(db, id, overrides = {}, fundUpdates = {}) {
+  const data = transactionData(overrides);
+  const batch = db.batch();
+  batch.set(db.doc(`transactions/${id}`), data);
+  batch.update(db.doc(`funds/${data.fundId}`), {
+    lastCreatedTransactionId: id,
+    transactionCreatedAt: serverTimestamp(),
+    ...fundUpdates,
+  });
+  return batch.commit();
 }
 
 function evidenceBatch(firestore, uid, id, action, before, after, updates, auditOverrides = {}) {
@@ -82,6 +99,29 @@ function submitUpdates(photos = [validPhoto]) {
     receiptPhotoURLs: photos,
     evidenceSubmittedAt: serverTimestamp(),
   };
+}
+
+function voidBatch(db, uid, collection, id, before, reason = "ข้อมูลผิด", updates = {}, auditOverrides = {}) {
+  const batch = db.batch();
+  const audit = db.collection("auditLogs").doc();
+  const isTopup = collection === "fundTopups";
+  const after = isTopup
+    ? { fundId: before.fundId, amount: before.amount, status: "voided", reason }
+    : { status: "voided", reason };
+  const entry = {
+    actorUid: uid, actorName: "ผู้ทดสอบ",
+    action: isTopup ? "fund-topup-voided" : "transaction-voided",
+    targetCollection: collection, targetId: id, before, after, createdAt: serverTimestamp(),
+    ...auditOverrides,
+  };
+  batch.update(db.doc(`${collection}/${id}`), {
+    status: "voided", voidedBy: uid, voidedByName: "ผู้ทดสอบ",
+    voidedAt: serverTimestamp(), voidReason: reason, auditLogId: audit.id,
+    ...(!isTopup ? { updatedAt: serverTimestamp() } : {}), ...updates,
+  });
+  batch.set(audit, entry);
+  batch.set(db.doc(`activityLogs/${audit.id}`), entry);
+  return batch;
 }
 
 async function seedTransaction(id, overrides = {}) {
@@ -167,6 +207,8 @@ describe("Firestore rules", { concurrency: false }, () => {
         rules: readFileSync(new URL("../firestore.rules", import.meta.url), "utf8"),
       },
     });
+    adminApp = initializeAdminApp({ projectId }, "archive-rules-test");
+    adminDb = getFirestore(adminApp);
   });
 
   beforeEach(async () => {
@@ -176,6 +218,7 @@ describe("Firestore rules", { concurrency: false }, () => {
 
   after(async () => {
     await testEnv?.cleanup();
+    if (adminApp) await deleteApp(adminApp);
   });
 
   test("guest reads only approved transactions and cannot write", async () => {
@@ -183,9 +226,9 @@ describe("Firestore rules", { concurrency: false }, () => {
 
     await assertSucceeds(firestore.doc("transactions/approved-a").get());
     await assertFails(firestore.doc("transactions/pending-a").get());
-    await assertFails(firestore.doc("transactions/guest-write").set(transactionData({
+    await assertFails(createTransaction(firestore, "guest-write", {
       createdBy: "guest-a",
-    })));
+    }));
   });
 
   test("first owner bootstrap succeeds only in one atomic batch", async () => {
@@ -234,17 +277,35 @@ describe("Firestore rules", { concurrency: false }, () => {
   test("staff creates a valid pending transaction but cannot approve or read bank payments", async () => {
     const firestore = testEnv.authenticatedContext("staff-a").firestore();
 
-    await assertSucceeds(firestore.doc("transactions/staff-new").set(transactionData()));
-    await assertFails(firestore.doc("transactions/staff-invalid-date").set(transactionData({
+    await assertSucceeds(createTransaction(firestore, "staff-new"));
+    await assertFails(createTransaction(firestore, "staff-invalid-date", {
       transactionDate: "12/11/2026",
-    })));
-    await assertFails(firestore.doc("transactions/staff-negative").set(transactionData({
+    }));
+    await assertFails(createTransaction(firestore, "staff-negative", {
       amount: -10,
-    })));
+    }));
     await assertFails(firestore.doc("transactions/pending-a").update({
       status: "approved",
     }));
     await assertFails(firestore.doc("transferPayments/payment-a").get());
+  });
+
+  test("transaction creation and fund coordination must be atomic and cannot change fund data", async () => {
+    const staff = testEnv.authenticatedContext("staff-a").firestore();
+    await assertFails(staff.doc("transactions/no-coordination").set(transactionData()));
+    await assertFails(staff.doc("funds/fund-a").update({
+      lastCreatedTransactionId: "missing", transactionCreatedAt: serverTimestamp(),
+    }));
+    await assertFails(createTransaction(staff, "tampered", {}, { openingBalance: 1 }));
+    await assertFails(createTransaction(staff, "wrong-marker", {}, { lastCreatedTransactionId: "other" }));
+    const batch = staff.batch();
+    batch.set(staff.doc("transactions/first"), transactionData());
+    batch.set(staff.doc("transactions/second"), transactionData());
+    batch.update(staff.doc("funds/fund-a"), {
+      lastCreatedTransactionId: "first", transactionCreatedAt: serverTimestamp(),
+    });
+    await assertFails(batch.commit());
+    await assertSucceeds(createTransaction(staff, "coordinated"));
   });
 
   test("fund top-up dates are optional, not future, and bound to the audit", async () => {
@@ -252,7 +313,7 @@ describe("Firestore rules", { concurrency: false }, () => {
     const staff = testEnv.authenticatedContext("staff-a").firestore();
     const past = new Date("2020-01-01T17:00:00Z");
     const future = new Date("2099-01-01T17:00:00Z");
-    const createTopup = (db, uid, id, fields = {}, auditAfter) => {
+    const createTopup = (db, uid, id, fields = {}, auditAfter, coordinate = true) => {
       const batch = db.batch();
       const audit = db.collection("auditLogs").doc();
       const after = auditAfter ?? { fundId: "fund-a", amount: 25, ...fields };
@@ -265,12 +326,21 @@ describe("Firestore rules", { concurrency: false }, () => {
         fundId: "fund-a", amount: 25, note: "", createdBy: uid, createdByName: "ทดสอบ",
         createdAt: serverTimestamp(), auditLogId: audit.id, ...fields,
       });
+      if (coordinate) {
+        batch.update(db.doc("funds/fund-a"), {
+          lastCreatedTopupId: id, topupCreatedAt: serverTimestamp(),
+        });
+      }
       batch.set(audit, entry);
       batch.set(db.doc(`activityLogs/${audit.id}`), entry);
       return batch.commit();
     };
     await assertSucceeds(createTopup(owner, "owner-a", "legacy"));
     await assertSucceeds(createTopup(owner, "owner-a", "dated", { topupDate: past }));
+    await assertFails(createTopup(owner, "owner-a", "uncoordinated", {}, undefined, false));
+    await assertFails(owner.doc("funds/fund-a").update({
+      lastCreatedTopupId: "missing", topupCreatedAt: serverTimestamp(),
+    }));
     await assertFails(createTopup(owner, "owner-a", "future", { topupDate: future }));
     await assertFails(createTopup(owner, "owner-a", "wrong-type", { topupDate: "2020-01-02" }));
     await assertFails(createTopup(owner, "owner-a", "wrong-audit", { topupDate: past }, { fundId: "fund-a", amount: 25 }));
@@ -362,12 +432,12 @@ describe("Firestore rules", { concurrency: false }, () => {
 
   test("transaction creation accepts zero to three valid photos only", async () => {
     const firestore = testEnv.authenticatedContext("staff-a").firestore();
-    await assertSucceeds(firestore.doc("transactions/no-photo").set(transactionData({
+    await assertSucceeds(createTransaction(firestore, "no-photo", {
       receiptPhotoURL: null, receiptPhotoURLs: [],
-    })));
-    await assertSucceeds(firestore.doc("transactions/three-photos").set(transactionData({
+    }));
+    await assertSucceeds(createTransaction(firestore, "three-photos", {
       receiptPhotoURLs: [validPhoto, validPhoto, validPhoto],
-    })));
+    }));
     for (const [id, overrides] of [
       ["wrong-empty", { receiptPhotoURL: validPhoto, receiptPhotoURLs: [] }],
       ["wrong-first", { receiptPhotoURL: null, receiptPhotoURLs: [validPhoto] }],
@@ -375,7 +445,7 @@ describe("Firestore rules", { concurrency: false }, () => {
       ["bad-type", { receiptPhotoURL: "data:image/gif;base64,AAAA", receiptPhotoURLs: ["data:image/gif;base64,AAAA"] }],
       ["too-large", { receiptPhotoURL: `data:image/jpeg;base64,${"A".repeat(175000)}`, receiptPhotoURLs: [`data:image/jpeg;base64,${"A".repeat(175000)}`] }],
       ["wrong-status", { status: "needs_evidence" }],
-    ]) await assertFails(firestore.doc(`transactions/${id}`).set(transactionData(overrides)));
+    ]) await assertFails(createTransaction(firestore, id, overrides));
   });
 
   test("request, submission, and cancellation require matching audit and proper roles", async () => {
@@ -434,12 +504,15 @@ describe("Firestore rules", { concurrency: false }, () => {
       reviewedBy: "owner-a", reviewedByName: "ผู้ตรวจสอบ", reviewedAt: serverTimestamp(),
       reviewNote: null, ...(status === "approved" ? { approvalSignatureURL: "data:image/png;base64,AAAA" } : {}),
     });
-    for (const status of ["approved", "rejected", "voided"]) {
+    for (const status of ["approved", "rejected"]) {
       const id = `review-${status}`;
       await seedTransaction(id, { status: "needs_evidence" });
       if (status === "approved") await assertFails(review(id, status).commit());
       else await assertSucceeds(review(id, status).commit());
     }
+    await seedTransaction("review-voided", { status: "needs_evidence" });
+    await assertFails(review("review-voided", "voided").commit());
+    await assertSucceeds(voidBatch(owner, "owner-a", "transactions", "review-voided", { status: "needs_evidence" }).commit());
     await seedTransaction("oversize", {
       status: "needs_evidence", changePhotoURL: `data:image/jpeg;base64,${"A".repeat(174000)}`,
       approvalSignatureURL: `data:image/png;base64,${"A".repeat(99000)}`,
@@ -453,6 +526,113 @@ describe("Firestore rules", { concurrency: false }, () => {
     await seedTransaction("owner-submits", { status: "needs_evidence", createdBy: "owner-a" });
     await assertSucceeds(evidenceBatch(owner, "owner-a", "owner-submits",
       "transaction-evidence-submitted", "needs_evidence", "pending", submitUpdates()).commit());
+  });
+
+  test("only owners can void transactions and topups with matching audit and a reason", async () => {
+      const owner = testEnv.authenticatedContext("owner-a").firestore();
+      const staff = testEnv.authenticatedContext("staff-a").firestore();
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc("fundTopups/topup-a").set({
+          fundId: "fund-a", amount: 25, note: "", createdBy: "owner-a",
+          createdByName: "เจ้าของ", createdAt: new Date(), auditLogId: "old-audit",
+        });
+      });
+      const txBefore = { status: "approved" };
+      const topupBefore = { fundId: "fund-a", amount: 25, status: "active" };
+      await assertFails(voidBatch(staff, "staff-a", "transactions", "approved-a", txBefore).commit());
+      for (const uid of ["guest-a", "pending-a", "disabled-a"]) {
+        const db = testEnv.authenticatedContext(uid).firestore();
+        await assertFails(voidBatch(db, uid, "transactions", "approved-a", txBefore).commit());
+        await assertFails(voidBatch(db, uid, "fundTopups", "topup-a", topupBefore).commit());
+      }
+      await assertFails(voidBatch(owner, "owner-a", "transactions", "approved-a", txBefore, "  \n").commit());
+      await assertFails(voidBatch(owner, "owner-a", "transactions", "approved-a", txBefore, "x".repeat(1001)).commit());
+      await assertFails(voidBatch(owner, "owner-a", "transactions", "approved-a", txBefore, "แก้ไข", { amount: 1 }).commit());
+      await assertFails(voidBatch(owner, "owner-a", "transactions", "approved-a", txBefore, "แก้ไข", {}, { after: { status: "voided", reason: "อื่น" } }).commit());
+      await assertFails(owner.doc("transactions/approved-a").update({
+        status: "voided", voidedBy: "owner-a", voidedByName: "เจ้าของ", voidedAt: serverTimestamp(),
+        voidReason: "ผิด", updatedAt: serverTimestamp(), auditLogId: "missing",
+      }));
+      await assertSucceeds(voidBatch(owner, "owner-a", "transactions", "approved-a", txBefore).commit());
+      const tx = (await owner.doc("transactions/approved-a").get()).data();
+      assert.equal(tx.approvalSignatureURL, "data:image/png;base64,AAAA");
+      await assertFails(voidBatch(owner, "owner-a", "transactions", "approved-a", { status: "voided" }).commit());
+
+      await assertFails(voidBatch(staff, "staff-a", "fundTopups", "topup-a", topupBefore).commit());
+      await assertFails(voidBatch(owner, "owner-a", "fundTopups", "topup-a", topupBefore, "").commit());
+      await assertFails(voidBatch(owner, "owner-a", "fundTopups", "topup-a", topupBefore, "ผิด", { amount: 100 }).commit());
+      await assertFails(voidBatch(owner, "owner-a", "fundTopups", "topup-a", topupBefore, "ผิด", {}, { after: { ...topupBefore, status: "voided", reason: "อื่น" } }).commit());
+      await assertSucceeds(voidBatch(owner, "owner-a", "fundTopups", "topup-a", topupBefore).commit());
+      await assertFails(voidBatch(owner, "owner-a", "fundTopups", "topup-a", topupBefore).commit());
+  });
+
+  test("archived funds remain readable but reject new transactions and topups", async () => {
+    const staff = testEnv.authenticatedContext("staff-a").firestore();
+    const owner = testEnv.authenticatedContext("owner-a").firestore();
+    const createTopup = (id) => {
+      const batch = owner.batch();
+      const audit = owner.collection("auditLogs").doc();
+      const entry = {
+        actorUid: "owner-a", actorName: "เจ้าของ", action: "fund-topup-created",
+        targetCollection: "fundTopups", targetId: id, before: null,
+        after: { fundId: "fund-a", amount: 25 }, createdAt: serverTimestamp(),
+      };
+      batch.set(owner.doc(`fundTopups/${id}`), {
+        fundId: "fund-a", amount: 25, note: "", createdBy: "owner-a", createdByName: "เจ้าของ",
+        createdAt: serverTimestamp(), auditLogId: audit.id,
+      });
+      batch.update(owner.doc("funds/fund-a"), {
+        lastCreatedTopupId: id, topupCreatedAt: serverTimestamp(),
+      });
+      batch.set(audit, entry);
+      batch.set(owner.doc(`activityLogs/${audit.id}`), entry);
+      return batch.commit();
+    };
+    await assertSucceeds(createTransaction(staff, "before-archive"));
+    await assertSucceeds(createTopup("before-archive"));
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc("funds/fund-a").update({ archived: true });
+      });
+
+    await assertSucceeds(staff.doc("funds/fund-a").get());
+    await assertFails(createTransaction(staff, "new-archived"));
+    await assertFails(createTopup("new-archived"));
+    await assertFails(owner.doc("funds/fund-a").update({ archived: false }));
+  });
+
+  test("server archive checks pending items and atomically records its audit", async () => {
+        await assert.rejects(archiveFund(adminDb, "staff-a", { fundId: "fund-a", reason: "เลิกใช้" }),
+          (error) => error.status === 403);
+        await assert.rejects(archiveFund(adminDb, "owner-a", { fundId: "fund-a", reason: "เลิกใช้" }),
+          (error) => error.status === 409);
+        await adminDb.doc("transactions/pending-a").update({ status: "approved" });
+        await archiveFund(adminDb, "owner-a", { fundId: "fund-a", reason: "เลิกใช้" });
+        const fund = (await adminDb.doc("funds/fund-a").get()).data();
+        const audit = (await adminDb.doc(`auditLogs/${fund.auditLogId}`).get()).data();
+        const activity = (await adminDb.doc(`activityLogs/${fund.auditLogId}`).get()).data();
+        assert.equal(fund.archived, true);
+        assert.equal(audit.after.reason, "เลิกใช้");
+        assert.deepEqual(activity, audit);
+  });
+
+  test("concurrent creation cannot leave a pending transaction in an archived fund", async () => {
+        const staff = testEnv.authenticatedContext("staff-a").firestore();
+        for (let index = 0; index < 5; index += 1) {
+          const fundId = `race-${index}`;
+          await adminDb.doc(`funds/${fundId}`).set({ label: "ทดสอบ", openingBalance: 0 });
+          const results = await Promise.allSettled([
+            archiveFund(adminDb, "owner-a", { fundId, reason: "เลิกใช้" }),
+            createTransaction(staff, fundId, { fundId }),
+          ]);
+          assert.ok(results.some((result) => result.status === "fulfilled"),
+            `both operations failed: ${results.map((result) => result.reason?.message).join("; ")}`);
+          const fund = (await adminDb.doc(`funds/${fundId}`).get()).data();
+          const pending = await adminDb.collection("transactions").where("fundId", "==", fundId)
+            .where("status", "==", "pending").get();
+          assert.equal(pending.empty, results[1].status !== "fulfilled");
+          assert.equal(fund.archived === true, results[0].status === "fulfilled");
+          assert.equal(fund.archived === true && !pending.empty, false);
+        }
   });
 
   test("owner approves a transaction atomically with its audit log", async () => {
@@ -693,8 +873,8 @@ describe("Firestore rules", { concurrency: false }, () => {
     await assertSucceeds(staff.doc("transactions/approved-a").get());
     await assertSucceeds(staff.doc("transactions/own-a").get());
     await assertFails(staff.doc("transactions/b").get());
-    await assertFails(staff.doc("transactions/write-b").set(transactionData({ fundId: "fund-b" })));
-    await assertSucceeds(staff.doc("transactions/write-a").set(transactionData()));
+    await assertFails(createTransaction(staff, "write-b", { fundId: "fund-b" }));
+    await assertSucceeds(createTransaction(staff, "write-a"));
     await assertSucceeds(staff.doc("transactions/own-a").update({
       amount: 130,
       updatedAt: serverTimestamp(),
@@ -747,7 +927,7 @@ describe("Firestore rules", { concurrency: false }, () => {
     await assertSucceeds(legacy.collection("transactions").where("status", "==", "approved").get());
     await assertFails(emptyStaff.doc("funds/fund-a").get());
     await assertFails(emptyStaff.doc("transactions/approved-a").get());
-    await assertFails(emptyStaff.doc("transactions/own").set(transactionData({ createdBy: "staff-b" })));
+    await assertFails(createTransaction(emptyStaff, "own", { createdBy: "staff-b" }));
     await assertFails(emptyGuest.doc("funds/fund-a").get());
     await assertFails(emptyGuest.doc("transactions/approved-a").get());
   });
@@ -762,7 +942,7 @@ describe("Firestore rules", { concurrency: false }, () => {
       await db.doc("transactions/max-evidence").set(transactionData({ status: "needs_evidence" }));
     });
     const staff = testEnv.authenticatedContext("staff-a").firestore();
-    await assertSucceeds(staff.doc("transactions/max-create").set(transactionData()));
+    await assertSucceeds(createTransaction(staff, "max-create"));
     await assertSucceeds(staff.doc("transactions/max-pending").update({
       amount: 130,
       updatedAt: serverTimestamp(),

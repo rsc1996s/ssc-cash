@@ -52,3 +52,14 @@ test("dashboard month windows cross years and reject invalid months", () => {
   assert.deepEqual(dashboardMonths("2026-02", 3).map((month) => month.key), ["2025-12", "2026-01", "2026-02"]);
   assert.deepEqual(dashboardMonths("2026-13"), []);
 });
+
+test("voided topups no longer contribute to dashboard balances", () => {
+  const fund = { id: "a", openingBalance: 100 };
+  const topups = [
+    { fundId: "a", amount: 50, topupDate: timestamp("2026-08-03T17:00:00Z") },
+    { fundId: "a", amount: 70, status: "voided", topupDate: timestamp("2026-08-03T17:00:00Z") },
+  ];
+  const result = calculateFundDashboard(fund, topups, [], "2026-08");
+  assert.equal(result.received, 50);
+  assert.equal(result.balance, 150);
+});

@@ -116,6 +116,16 @@ service cloud.firestore {
       return amount is number && amount >= 0 && amount <= 1000000000;
     }
 
+    function validVoidReason(reason) {
+      return reason is string && reason.size() > 0 && reason.size() <= 1000 &&
+        reason.matches('(?s).*[^\\s].*');
+    }
+
+    function activeFund(fundId) {
+      let fundPath = /databases/$(database)/documents/funds/$(fundId);
+      return exists(fundPath) && get(fundPath).data.get('archived', false) == false;
+    }
+
     function auditMatches(auditId, action, targetCollection, targetId, before, after) {
       return auditId is string &&
         existsAfter(auditPath(auditId)) &&
@@ -210,7 +220,7 @@ service cloud.firestore {
           'editHistory'
         ]) &&
         data.fundId is string &&
-        exists(/databases/$(database)/documents/funds/$(data.fundId)) &&
+        activeFund(data.fundId) &&
         data.fundLabel is string && data.fundLabel.size() <= 200 &&
         data.type in ['income', 'expense'] &&
         validPositiveAmount(data.amount) &&
@@ -341,13 +351,16 @@ service cloud.firestore {
       let action = request.resource.data.action;
       return (
           action == 'transaction-status-changed' ||
+          (action == 'transaction-voided' && oldTx.status != 'voided' && newTx.status == 'voided') ||
           (action == 'transaction-evidence-requested' && oldTx.status == 'pending' && newTx.status == 'needs_evidence') ||
           (action in ['transaction-evidence-submitted', 'transaction-evidence-request-cancelled'] &&
             oldTx.status == 'needs_evidence' && newTx.status == 'pending')
         ) &&
         request.resource.data.targetCollection == 'transactions' &&
         before == { 'status': oldTx.status } &&
-        after == { 'status': newTx.status } &&
+        after == (action == 'transaction-voided'
+          ? { 'status': newTx.status, 'reason': newTx.voidReason }
+          : { 'status': newTx.status }) &&
         newTx.auditLogId == auditId &&
         newTx.status != oldTx.status;
     }
@@ -419,12 +432,24 @@ service cloud.firestore {
       let targetId = request.resource.data.targetId;
       let topupPath = /databases/$(database)/documents/fundTopups/$(targetId);
       let topup = getAfter(topupPath).data;
-      return request.resource.data.action == 'fund-topup-created' &&
-        request.resource.data.targetCollection == 'fundTopups' &&
-        !exists(topupPath) &&
+      return request.resource.data.targetCollection == 'fundTopups' &&
         topup.auditLogId == auditId &&
-        request.resource.data.before == null &&
-        request.resource.data.after == topupAuditFields(topup);
+        ((request.resource.data.action == 'fund-topup-created' &&
+          !exists(topupPath) &&
+          request.resource.data.before == null &&
+          request.resource.data.after == topupAuditFields(topup)) ||
+         (request.resource.data.action == 'fund-topup-voided' &&
+          exists(topupPath) &&
+          get(topupPath).data.get('status', 'active') == 'active' &&
+          topup.status == 'voided' &&
+          request.resource.data.before == {
+            'fundId': get(topupPath).data.fundId,
+            'amount': get(topupPath).data.amount, 'status': 'active'
+          } &&
+          request.resource.data.after == {
+            'fundId': topup.fundId, 'amount': topup.amount,
+            'status': 'voided', 'reason': topup.voidReason
+          }));
     }
 
     function validWithdrawalDeleteAudit(auditId) {
@@ -619,6 +644,8 @@ service cloud.firestore {
       allow create: if isApprovedUser() &&
         request.resource.data.createdBy == request.auth.uid &&
         canAccessFund(request.resource.data.fundId) &&
+        getAfter(/databases/$(database)/documents/funds/$(request.resource.data.fundId)).data.get('lastCreatedTransactionId', '') == txId &&
+        getAfter(/databases/$(database)/documents/funds/$(request.resource.data.fundId)).data.get('transactionCreatedAt', null) == request.time &&
         validTransaction(request.resource.data);
 
       allow read: if canReadCash() &&
@@ -646,8 +673,8 @@ service cloud.firestore {
         ||
         ((resource.data.status == 'pending' ||
             (resource.data.status == 'needs_evidence' &&
-              request.resource.data.status in ['rejected', 'voided'])) &&
-          request.resource.data.status in ['approved', 'rejected', 'voided'] &&
+              request.resource.data.status == 'rejected')) &&
+          request.resource.data.status in ['approved', 'rejected'] &&
           isOwner() &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'status', 'reviewedBy', 'reviewedByName', 'reviewedAt',
@@ -674,6 +701,22 @@ service cloud.firestore {
             { 'status': resource.data.status },
             { 'status': request.resource.data.status }
           ))
+        ||
+        (isOwner() && resource.data.status != 'voided' &&
+          request.resource.data.status == 'voided' &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'voidedBy', 'voidedByName', 'voidedAt', 'voidReason',
+            'updatedAt', 'auditLogId'
+          ]) &&
+          request.resource.data.voidedBy == request.auth.uid &&
+          request.resource.data.voidedByName is string &&
+          request.resource.data.voidedByName.size() <= 200 &&
+          request.resource.data.voidedAt == request.time &&
+          validVoidReason(request.resource.data.voidReason) &&
+          request.resource.data.updatedAt == request.time &&
+          auditMatches(request.resource.data.auditLogId, 'transaction-voided',
+            'transactions', txId, { 'status': resource.data.status },
+            { 'status': 'voided', 'reason': request.resource.data.voidReason }))
         ||
         (resource.data.status == 'pending' &&
           request.resource.data.status == 'needs_evidence' &&
@@ -724,6 +767,7 @@ service cloud.firestore {
         ||
         (request.resource.data.status == resource.data.status &&
           isOwner() &&
+          resource.data.status != 'voided' &&
           request.resource.data.createdBy == resource.data.createdBy &&
           request.resource.data.createdAt == resource.data.createdAt &&
           request.resource.data.fundId == resource.data.fundId &&
@@ -763,7 +807,8 @@ service cloud.firestore {
           }
         );
 
-      allow update: if isOwner() &&
+      allow update: if (isOwner() &&
+        resource.data.get('archived', false) == false &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'label', 'openingBalance', 'auditLogId'
         ]) &&
@@ -782,7 +827,30 @@ service cloud.firestore {
             'label': request.resource.data.label,
             'openingBalance': request.resource.data.openingBalance
           }
-        );
+        )) ||
+        (isApprovedUser() &&
+          canAccessFund(fundId) &&
+          resource.data.get('archived', false) == false &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'lastCreatedTransactionId', 'transactionCreatedAt'
+          ]) &&
+          request.resource.data.lastCreatedTransactionId is string &&
+          request.resource.data.transactionCreatedAt == request.time &&
+          !exists(/databases/$(database)/documents/transactions/$(request.resource.data.lastCreatedTransactionId)) &&
+          existsAfter(/databases/$(database)/documents/transactions/$(request.resource.data.lastCreatedTransactionId)) &&
+          getAfter(/databases/$(database)/documents/transactions/$(request.resource.data.lastCreatedTransactionId)).data.fundId == fundId &&
+          getAfter(/databases/$(database)/documents/transactions/$(request.resource.data.lastCreatedTransactionId)).data.createdBy == request.auth.uid) ||
+        (isOwner() &&
+          resource.data.get('archived', false) == false &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'lastCreatedTopupId', 'topupCreatedAt'
+          ]) &&
+          request.resource.data.lastCreatedTopupId is string &&
+          request.resource.data.topupCreatedAt == request.time &&
+          !exists(/databases/$(database)/documents/fundTopups/$(request.resource.data.lastCreatedTopupId)) &&
+          existsAfter(/databases/$(database)/documents/fundTopups/$(request.resource.data.lastCreatedTopupId)) &&
+          getAfter(/databases/$(database)/documents/fundTopups/$(request.resource.data.lastCreatedTopupId)).data.fundId == fundId &&
+          getAfter(/databases/$(database)/documents/fundTopups/$(request.resource.data.lastCreatedTopupId)).data.createdBy == request.auth.uid);
 
       allow delete: if false;
     }
@@ -795,7 +863,9 @@ service cloud.firestore {
           'createdAt', 'auditLogId', 'topupDate'
         ]) &&
         request.resource.data.fundId is string &&
-        exists(/databases/$(database)/documents/funds/$(request.resource.data.fundId)) &&
+        activeFund(request.resource.data.fundId) &&
+        getAfter(/databases/$(database)/documents/funds/$(request.resource.data.fundId)).data.get('lastCreatedTopupId', '') == topupId &&
+        getAfter(/databases/$(database)/documents/funds/$(request.resource.data.fundId)).data.get('topupCreatedAt', null) == request.time &&
         validPositiveAmount(request.resource.data.amount) &&
         request.resource.data.note is string &&
         request.resource.data.note.size() <= 2000 &&
@@ -815,7 +885,23 @@ service cloud.firestore {
           null,
           topupAuditFields(request.resource.data)
         );
-      allow update, delete: if false;
+      allow update: if isOwner() &&
+        resource.data.get('status', 'active') == 'active' &&
+        request.resource.data.status == 'voided' &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'voidedBy', 'voidedByName', 'voidedAt', 'voidReason', 'auditLogId'
+        ]) &&
+        request.resource.data.voidedBy == request.auth.uid &&
+        request.resource.data.voidedByName is string &&
+        request.resource.data.voidedByName.size() <= 200 &&
+        request.resource.data.voidedAt == request.time &&
+        validVoidReason(request.resource.data.voidReason) &&
+        auditMatches(request.resource.data.auditLogId, 'fund-topup-voided',
+          'fundTopups', topupId,
+          { 'fundId': resource.data.fundId, 'amount': resource.data.amount, 'status': 'active' },
+          { 'fundId': resource.data.fundId, 'amount': resource.data.amount,
+            'status': 'voided', 'reason': request.resource.data.voidReason });
+      allow delete: if false;
     }
 
     match /cashCategories/{categoryId} {
@@ -990,7 +1076,7 @@ service cloud.firestore {
         auditHasFields(request.resource.data) &&
         (
           (request.resource.data.action in [
-              'transaction-status-changed', 'transaction-evidence-requested',
+              'transaction-status-changed', 'transaction-voided', 'transaction-evidence-requested',
               'transaction-evidence-submitted', 'transaction-evidence-request-cancelled'
             ] &&
             validTransactionAudit(auditId))
@@ -1003,7 +1089,7 @@ service cloud.firestore {
           (request.resource.data.action in ['fund-created', 'fund-updated'] &&
             validFundAudit(auditId))
           ||
-          (request.resource.data.action == 'fund-topup-created' &&
+          (request.resource.data.action in ['fund-topup-created', 'fund-topup-voided'] &&
             validTopupAudit(auditId))
           ||
           (request.resource.data.action == 'withdrawal-deleted' &&

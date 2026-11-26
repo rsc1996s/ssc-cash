@@ -20,3 +20,17 @@ test("a descriptive top-up date does not change the ledger or balance", () => {
   assert.equal(ledger[0].date.getTime(), createdAt.getTime());
   assert.equal(currentFundBalance(fund, topups, []), 125);
 });
+
+test("voided topups and transactions are excluded from the fund balance", () => {
+  const fund = { id: "fund-a", openingBalance: 100 };
+  const topups = [
+    { fundId: fund.id, amount: 25, createdAt: new Date() },
+    { fundId: fund.id, amount: 500, status: "voided", createdAt: new Date() },
+  ];
+  const transactions = [
+    { fundId: fund.id, amount: 10, type: "expense", status: "approved", createdAt: new Date() },
+    { fundId: fund.id, amount: 400, type: "expense", status: "voided", createdAt: new Date() },
+  ];
+  assert.equal(buildFundLedger(fund, topups, transactions).length, 2);
+  assert.equal(currentFundBalance(fund, topups, transactions), 115);
+});

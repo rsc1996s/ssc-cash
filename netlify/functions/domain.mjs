@@ -24,7 +24,7 @@ function calculateCashBalance(fund, topups, transactions, asOf) {
   let balanceCents = toCents(fund.openingBalance || 0, "openingBalance");
   topups.forEach((topup) => {
     const createdAt = timestampMillis(topup.createdAt);
-    if (topup.fundId === fund.id && createdAt <= cutoff) {
+    if (topup.fundId === fund.id && topup.status !== "voided" && createdAt <= cutoff) {
       balanceCents += toCents(topup.amount, "topup.amount");
     }
   });

@@ -101,6 +101,9 @@ async function closeFund(db, uid, input, now) {
     if (!fundSnapshot.exists) throw new HttpError(404, "not-found", "ไม่พบงบค่าใช้จ่ายที่เลือก");
 
     const fund = { id: fundSnapshot.id, ...fundSnapshot.data() };
+    if (fund.archived === true && !supersedesId) {
+      throw new HttpError(409, "failed-precondition", "งบนี้ปิดใช้งานแล้ว ไม่สามารถปิดยอดใหม่");
+    }
     const closings = closingsSnapshot.docs
       .map((snapshot) => ({ id: snapshot.id, ...snapshot.data() }))
       .filter((closing) => closing.businessDate === businessDate)
@@ -246,4 +249,4 @@ export default async (request) => {
   }
 };
 
-export { closeFund };
+export { adminServices, closeFund, HttpError, jsonResponse };

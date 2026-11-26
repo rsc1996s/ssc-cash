@@ -8,6 +8,7 @@ import {
   validateBusinessDate,
 } from "../netlify/functions/domain.mjs";
 import handler, { closeFund } from "../netlify/functions/close-daily-fund.mjs";
+import archiveHandler, { archiveFund } from "../netlify/functions/archive-fund.mjs";
 
 test("cash balance includes opening balance, topups, and approved cash transactions only", () => {
   const asOf = new Date("2026-11-07T04:00:00.000Z");
@@ -16,6 +17,7 @@ test("cash balance includes opening balance, topups, and approved cash transacti
     { fundId: "fund-a", amount: 100, createdAt: new Date("2026-11-06T00:00:00.000Z") },
     { fundId: "fund-b", amount: 500, createdAt: new Date("2026-11-06T00:00:00.000Z") },
     { fundId: "fund-a", amount: 50, createdAt: new Date("2026-11-07T05:00:00.000Z") },
+    { fundId: "fund-a", amount: 900, status: "voided", createdAt: new Date("2026-11-06T00:00:00.000Z") },
   ];
   const transactions = [
     { fundId: "fund-a", status: "approved", type: "income", paymentMethod: "cash", amount: 200, createdAt: new Date("2026-11-06T00:00:00.000Z") },
@@ -25,6 +27,74 @@ test("cash balance includes opening balance, topups, and approved cash transacti
   ];
 
   assert.equal(calculateCashBalance(fund, topups, transactions, asOf), 1270);
+});
+
+test("archiving requires an active owner, a reason, and no pending evidence or reviews", async () => {
+  function fakeDb(profile, { pending = false, archived = false } = {}) {
+    const writes = [];
+    const docs = {
+      "users/user": { exists: true, data: () => profile },
+      "funds/fund-a": { exists: true, data: () => ({ label: "ทดสอบ", archived }) },
+    };
+    const transaction = {
+      get: async (ref) => docs[ref.path] || { empty: !pending },
+      update: (ref, data) => writes.push({ path: ref.path, data }),
+      create: (ref, data) => writes.push({ path: ref.path, data }),
+    };
+    const db = {
+      doc: (path) => ({ path }),
+      collection: (path) => ({
+        path,
+        where() { return this; },
+        limit() { return this; },
+        doc() { return { id: "audit-a", path: `${path}/audit-a` }; },
+      }),
+      runTransaction: (callback) => callback(transaction),
+    };
+    return { db, writes };
+  }
+  const input = { fundId: "fund-a", reason: "เลิกใช้งาน" };
+  await assert.rejects(archiveFund(fakeDb({ role: "staff" }).db, "user", input), (error) => error.status === 403);
+  await assert.rejects(archiveFund(fakeDb({ role: "owner", disabled: true }).db, "user", input), (error) => error.status === 403);
+  await assert.rejects(archiveFund(fakeDb({ role: "owner" }, { pending: true }).db, "user", input), (error) => error.status === 409);
+  await assert.rejects(archiveFund(fakeDb({ role: "owner" }, { archived: true }).db, "user", input), (error) => error.status === 409);
+  await assert.rejects(archiveFund(fakeDb({ role: "owner" }).db, "user", { ...input, reason: "  " }), (error) => error.status === 400);
+  const { db, writes } = fakeDb({ role: "owner", name: "ผู้ทดสอบ" });
+  await archiveFund(db, "user", input);
+  assert.equal(writes.length, 3);
+  assert.equal(writes[0].data.archived, true);
+  assert.equal(writes[1].data.after.reason, input.reason);
+  assert.deepEqual(writes[1].data, writes[2].data);
+  assert.equal((await archiveHandler(new Request("https://example.test", { method: "POST" }))).status, 401);
+});
+
+test("archived funds reject new daily closings but allow correcting an existing closing", async () => {
+  const now = new Date("2026-11-07T04:00:00.000Z");
+  const previous = {
+    fundId: "fund-a", businessDate: "2026-11-07", revision: 1,
+    countedCash: 100, difference: 0, expectedBalance: 100,
+    balanceAsOf: { toDate: () => now },
+  };
+  const oldSnapshot = { exists: true, id: "old", data: () => previous };
+  const docs = {
+    "users/owner": { exists: true, data: () => ({ role: "owner" }) },
+    "funds/fund-a": { exists: true, id: "fund-a", data: () => ({ label: "A", openingBalance: 100, archived: true }) },
+    "dailyClosings/old": oldSnapshot,
+  };
+  const transaction = {
+    get: async (ref) => docs[ref.path] || { docs: ref.path === "dailyClosings" ? [oldSnapshot] : [] },
+    create: () => {},
+  };
+  const db = {
+    doc: (path) => ({ path, id: path.split("/").at(-1) }),
+    collection: (path) => ({ path, where() { return this; } }),
+    runTransaction: (callback) => callback(transaction),
+  };
+  const input = { fundId: "fund-a", countedCash: 100, reason: "", businessDate: "2026-11-07" };
+  await assert.rejects(closeFund(db, "owner", input, now), (error) => error.status === 409);
+  const result = await closeFund(db, "owner", { ...input, supersedesId: "old", reason: "แก้ไข" }, now);
+  assert.equal(result.revision, 2);
+  assert.equal(result.expectedBalance, 100);
 });
 
 test("money conversion rejects invalid precision and unsafe values", () => {
