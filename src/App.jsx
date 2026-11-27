@@ -6,12 +6,15 @@ import FeedbackProvider from "./components/ui/FeedbackProvider";
 import Loading from "./components/ui/Loading";
 import PageTransition from "./components/PageTransition";
 import { ScopedCashDataProvider } from "./hooks/useScopedCashData";
+import ReceiptQueueProvider from "./components/ReceiptQueueProvider";
 
 const Login = lazy(() => import("./pages/Login"));
 const Register = lazy(() => import("./pages/Register"));
 const PendingApproval = lazy(() => import("./pages/PendingApproval"));
 const Home = lazy(() => import("./pages/Home"));
 const NewTransaction = lazy(() => import("./pages/NewTransaction"));
+const Receipts = lazy(() => import("./pages/Receipts"));
+const ReceiptReport = lazy(() => import("./pages/ReceiptReport"));
 const TransactionDetail = lazy(() => import("./pages/TransactionDetail"));
 const OwnerDashboard = lazy(() => import("./pages/OwnerDashboard"));
 const AdminUsers = lazy(() => import("./pages/AdminUsers"));
@@ -36,6 +39,7 @@ export default function App() {
       <AuthProvider>
         <ScopedCashDataProvider>
         <FeedbackProvider>
+          <ReceiptQueueProvider>
           <PageTransition>
           <Suspense fallback={<div className="mx-auto max-w-6xl px-4"><Loading /></div>}>
           <Routes>
@@ -110,6 +114,8 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+          <Route path="/receipts" element={<ProtectedRoute requireRole={["owner", "staff"]}><Receipts /></ProtectedRoute>} />
+          <Route path="/receipts/print" element={<ProtectedRoute requireRole={["owner", "staff"]}><ReceiptReport /></ProtectedRoute>} />
           <Route
             path="/transaction/:id"
             element={
@@ -225,6 +231,7 @@ export default function App() {
           </Routes>
           </Suspense>
           </PageTransition>
+          </ReceiptQueueProvider>
         </FeedbackProvider>
         </ScopedCashDataProvider>
       </AuthProvider>

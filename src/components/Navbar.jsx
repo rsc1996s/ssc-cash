@@ -172,6 +172,9 @@ export default function Navbar() {
           <NavigationLink to="/new" onClick={() => setShortcutsOpen(false)} className="flex min-h-12 items-center rounded-xl border border-paperLine px-4 font-medium hover:bg-primary-light">
             บันทึกรายการ
           </NavigationLink>
+          <NavigationLink to="/receipts" onClick={() => setShortcutsOpen(false)} className="flex min-h-12 items-center rounded-xl border border-paperLine px-4 font-medium hover:bg-primary-light">
+            รับโอนจากลูกค้า
+          </NavigationLink>
           <NavigationLink to="/transfers/withdrawals/new" onClick={() => setShortcutsOpen(false)} className="flex min-h-12 items-center rounded-xl border border-paperLine px-4 font-medium hover:bg-primary-light">
             ใบเบิกเงินโอน
           </NavigationLink>

@@ -4,6 +4,7 @@ import { useRef, useState, useEffect } from "react";
 export default function SignaturePad({ onChange }) {
   const canvasRef = useRef(null);
   const drawing = useRef(false);
+  const hasStroke = useRef(false);
   const [hasSignature, setHasSignature] = useState(false);
 
   useEffect(() => {
@@ -40,6 +41,7 @@ export default function SignaturePad({ onChange }) {
     const ctx = canvasRef.current.getContext("2d");
     ctx.lineTo(x, y);
     ctx.stroke();
+    hasStroke.current = true;
     setHasSignature(true);
   }
 
@@ -47,13 +49,14 @@ export default function SignaturePad({ onChange }) {
     if (!drawing.current) return;
     drawing.current = false;
     // ส่งออกเป็น base64 data URL โดยตรง (ไม่ต้องอัปโหลดขึ้น Storage)
-    onChange(canvasRef.current.toDataURL("image/png"));
+    if (hasStroke.current) onChange(canvasRef.current.toDataURL("image/png"));
   }
 
   function clear() {
     const canvas = canvasRef.current;
     canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
     setHasSignature(false);
+    hasStroke.current = false;
     onChange(null);
   }
 

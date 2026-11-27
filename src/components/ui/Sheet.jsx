@@ -16,7 +16,7 @@ function cleanClosedHistoryEntries() {
   }, 0);
 }
 
-export default function Sheet({ open, title, onClose, children, footer, header }) {
+export default function Sheet({ open, title, onClose, children, footer, header, panelClassName = "" }) {
   const touchStartY = useRef(null);
   const token = `sheet-${useId()}`;
   const onCloseRef = useRef(onClose);
@@ -75,7 +75,7 @@ export default function Sheet({ open, title, onClose, children, footer, header }
         aria-modal="true"
         aria-labelledby={header ? undefined : `${token}-title`}
         aria-label={header ? title : undefined}
-        className="flex max-h-[85dvh] w-full flex-col overflow-hidden rounded-t-2xl border border-paperLine bg-white shadow-xl sm:max-w-xl sm:rounded-2xl"
+        className={`flex w-full flex-col overflow-hidden rounded-t-2xl border border-paperLine bg-white shadow-xl sm:rounded-2xl ${panelClassName || "max-h-[85dvh] sm:max-w-xl"}`}
         onTouchStart={(event) => {
           touchStartY.current = event.target.closest?.("[data-sheet-handle]")
             ? event.touches[0].clientY

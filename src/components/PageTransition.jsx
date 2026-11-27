@@ -4,6 +4,7 @@ import { useLocation } from "react-router-dom";
 const MAIN_MENU_PATHS = new Set([
   "/",
   "/transfers",
+  "/receipts",
   "/owner",
   "/admin/funds",
   "/reports",

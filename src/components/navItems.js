@@ -6,11 +6,13 @@ import {
   Receipt,
   Settings,
   Wallet,
+  ArrowDownToLine,
 } from "lucide-react";
 
 export function getNavItems({ isOwner, isGuest, isStaff, pendingTxCount = 0, pendingUserCount = 0 }) {
   return [
     { to: "/", icon: Receipt, label: "หน้าหลัก", show: true },
+    { to: "/receipts", icon: ArrowDownToLine, label: "รับโอน", show: isOwner || isStaff },
     {
       to: "/transfers",
       icon: FileText,
