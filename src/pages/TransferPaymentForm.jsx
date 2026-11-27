@@ -14,6 +14,7 @@ import { useAuth } from "../context/AuthContext";
 import Layout from "../components/Layout";
 import Loading from "../components/ui/Loading";
 import { formatBaht } from "../lib/format";
+import { formatBusinessDate } from "../lib/businessDate";
 import { nextDocNumber } from "../lib/counters";
 import { lineTotal, renumberLines, remainingBalance } from "../lib/transfers";
 import SearchPicker from "../components/ui/SearchPicker";
@@ -396,7 +397,7 @@ export default function TransferPaymentForm() {
                   <div key={payment.id} className="mt-2">
                     <Link to={`/transfers/payments/${payment.id}`} className="text-blue-700 underline">{payment.transferNo}</Link>
                     {" · "}{formatBaht(lineTotal(payment.lines))} บาท
-                    <ul>{(payment.lines || []).map((line, index) => <li key={index} className="text-xs text-inkSoft">{line.transferDate} · {line.payeeAccountLabel} · {formatBaht(line.amount)} บาท</li>)}</ul>
+                    <ul>{(payment.lines || []).map((line, index) => <li key={index} className="text-xs text-inkSoft">{formatBusinessDate(line.transferDate)} · {line.payeeAccountLabel} · {formatBaht(line.amount)} บาท</li>)}</ul>
                   </div>
                 ))}
             </div>

@@ -15,7 +15,7 @@ import FormHeader from "../components/ui/FormHeader";
 import { useFeedback } from "../components/ui/FeedbackProvider";
 import SearchPicker from "../components/ui/SearchPicker";
 import useScopedCashData from "../hooks/useScopedCashData";
-import { bangkokDate } from "../lib/businessDate";
+import { bangkokDate, formatBusinessDate } from "../lib/businessDate";
 import { isActiveFund } from "../lib/cashStatus";
 import Sheet from "../components/ui/Sheet";
 
@@ -188,7 +188,7 @@ export default function DailyClosings() {
         <form id="daily-closing-form" onSubmit={submit} className="space-y-4">
           {correction && (
             <div className="rounded-lg border border-warning/30 bg-warning-light p-3 text-sm text-warning">
-              กำลังแก้ไขยอดวันที่ {correction.businessDate} · ครั้งที่ {correction.revision + 1}
+              กำลังแก้ไขยอดวันที่ {formatBusinessDate(correction.businessDate)} · ครั้งที่ {correction.revision + 1}
               <button
                 type="button"
                 onClick={() => {
@@ -280,7 +280,7 @@ export default function DailyClosings() {
               {latestClosings.slice(0, visibleCount).map((closing) => (
                 <Card key={closing.id} className="grid gap-4 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
                   <div className="min-w-0 break-words">
-                    <p className="font-semibold">{closing.fundLabel} · {closing.businessDate}</p>
+                    <p className="font-semibold">{closing.fundLabel} · {formatBusinessDate(closing.businessDate)}</p>
                     <p className="mt-1 text-sm text-inkSoft">
                       คาด <span className="font-nums">{formatBaht(closing.expectedBalance)}</span> · นับได้{" "}
                       <span className="font-nums">{formatBaht(closing.countedCash)}</span> ·{" "}

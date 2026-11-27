@@ -1,13 +1,9 @@
 import { useMemo, useState } from "react";
 import {
   collection,
-  addDoc,
-  updateDoc,
   doc,
   serverTimestamp,
-  Timestamp,
   writeBatch,
-  runTransaction,
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
@@ -23,11 +19,11 @@ import PageHeader from "../components/ui/PageHeader";
 import Card from "../components/ui/Card";
 import Input from "../components/ui/Input";
 import useScopedCashData from "../hooks/useScopedCashData";
-import { bangkokDate, formatBangkokDate, parseBangkokDate } from "../lib/businessDate";
+import { formatBangkokDate, parseBangkokDate } from "../lib/businessDate";
 import VoidReasonSheet from "../components/VoidReasonSheet";
 import { isActiveFund, isActiveTopup } from "../lib/cashStatus";
-import { matchingIncomeTransactions, possibleIncomeDuplicateGroups } from "../components/incomeDuplicates";
-import PossibleIncomeDuplicates from "../components/PossibleIncomeDuplicates";
+import { possibleIncomeDuplicateGroups } from "../components/incomeDuplicates";
+import TopUpDialog from "../components/TopUpDialog";
 
 export default function AdminFunds() {
   const { user, profile } = useAuth();
@@ -35,7 +31,6 @@ export default function AdminFunds() {
   const { funds, topups, transactions, loading: cashLoading, error: loadError } = useScopedCashData();
 
   const [newFund, setNewFund] = useState({ label: "", openingBalance: "" });
-  const [topupDraft, setTopupDraft] = useState({});
   const [editingId, setEditingId] = useState(null);
   const [editDraft, setEditDraft] = useState({ label: "", openingBalance: "" });
   const [busy, setBusy] = useState(false);
@@ -47,10 +42,6 @@ export default function AdminFunds() {
   const [duplicateReviewOpen, setDuplicateReviewOpen] = useState(false);
   const [visibleDuplicateCount, setVisibleDuplicateCount] = useState(20);
 
-  const activeTopupDraft = topupDraft[topupFundId] || {};
-  const possibleIncomes = matchingIncomeTransactions({
-    fundId: topupFundId, amount: activeTopupDraft.amount, date: activeTopupDraft.date,
-  }, transactions);
   const duplicateGroups = useMemo(() => possibleIncomeDuplicateGroups(topups, transactions), [topups, transactions]);
 
   async function createFund(e) {
@@ -96,78 +87,6 @@ export default function AdminFunds() {
     }
   }
 
-  async function submitTopup(fundId) {
-    const draft = topupDraft[fundId] || {};
-    if (cashLoading || loadError) {
-      setError("ยังตรวจสอบรายการเดิมไม่ได้ กรุณารอข้อมูลหรือโหลดหน้าใหม่");
-      return;
-    }
-    const topupDate = parseBangkokDate(draft.date || "");
-    if (!topupDate || draft.date > bangkokDate()) {
-      setError("กรุณาเลือกวันที่เติมเงินที่ถูกต้องและไม่เกินวันนี้");
-      document.getElementById("fund-topup-date")?.focus();
-      return;
-    }
-    if (!draft.amount || Number(draft.amount) <= 0) {
-      setError("กรุณากรอกจำนวนเงินมากกว่า 0 บาท");
-      document.getElementById("fund-topup-amount")?.focus();
-      return;
-    }
-    setBusy(true);
-    if (possibleIncomes.length && !await confirm({
-      title: "ตรวจสอบเงินเข้าที่อาจซ้ำ",
-      description: "พบรายรับที่มีงบ วันที่ และจำนวนเงินตรงกัน หากเป็นเงินก้อนเดียวกันไม่ควรบันทึกซ้ำ",
-      confirmLabel: "เป็นคนละรายการ บันทึกต่อ",
-      cancelLabel: "กลับไปตรวจสอบ",
-    })) {
-      setBusy(false);
-      return;
-    }
-    setError("");
-    try {
-      const topupRef = doc(collection(db, "fundTopups"));
-      const after = { fundId, amount: Number(draft.amount), topupDate: Timestamp.fromDate(topupDate) };
-      const audit = newAuditEvent({
-        actorUid: user.uid,
-        actorName: profile?.name || user.email,
-        action: "fund-topup-created",
-        targetCollection: "fundTopups",
-        targetId: topupRef.id,
-        before: null,
-        after,
-      });
-      const fundRef = doc(db, "funds", fundId);
-      await runTransaction(db, async (batch) => {
-        const fundSnapshot = await batch.get(fundRef);
-        if (!fundSnapshot.exists() || fundSnapshot.data().archived === true) {
-          throw new Error("งบนี้ถูกปิดใช้งานแล้ว ไม่สามารถเติมเงิน");
-        }
-        batch.set(topupRef, {
-          ...after,
-          note: (draft.note || "").trim(),
-          createdBy: user.uid,
-          createdByName: profile?.name || user.email,
-          createdAt: serverTimestamp(),
-          auditLogId: audit.ref.id,
-        });
-        batch.update(fundRef, {
-          lastCreatedTopupId: topupRef.id,
-          topupCreatedAt: serverTimestamp(),
-        });
-        queueAuditEvent(batch, audit);
-      });
-      setTopupDraft((d) => ({ ...d, [fundId]: null }));
-      setTopupFundId(null);
-      toast("เติมเงินเข้างบค่าใช้จ่ายแล้ว");
-    } catch (err) {
-      console.error(err);
-      setError(err.message === "งบนี้ถูกปิดใช้งานแล้ว ไม่สามารถเติมเงิน"
-        ? err.message : "เติมเงินเข้างบค่าใช้จ่ายไม่สำเร็จ กรุณาตรวจสอบสิทธิ์และการเชื่อมต่อ");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   function startEdit(fund) {
     setEditingId(fund.id);
     setEditDraft({ label: fund.label, openingBalance: String(fund.openingBalance) });
@@ -199,22 +118,7 @@ export default function AdminFunds() {
     setCreateOpen(false);
   }
 
-  async function cancelTopup() {
-    const draft = topupDraft[topupFundId] || {};
-    if ((draft.amount || draft.note || draft.date !== draft.initialDate) && !await confirm({
-      title: "ยกเลิกการเติมเงิน",
-      description: "ข้อมูลที่กรอกไว้แต่ยังไม่ได้บันทึกจะหายไป",
-      confirmLabel: "ทิ้งข้อมูล",
-      cancelLabel: "ทำต่อ",
-      danger: true,
-    })) return;
-    setTopupDraft((items) => ({ ...items, [topupFundId]: null }));
-    setTopupFundId(null);
-  }
-
   function openTopup(fundId) {
-    const today = bangkokDate();
-    setTopupDraft((items) => ({ ...items, [fundId]: { amount: "", note: "", date: today, initialDate: today } }));
     setError("");
     setTopupFundId(fundId);
   }
@@ -473,78 +377,8 @@ export default function AdminFunds() {
         </form>
       </Sheet>
 
-      <Sheet
-        open={Boolean(topupFundId)}
-        title="เติมเงิน"
-        onClose={cancelTopup}
-        header={
-          <FormHeader
-            title={`เติมเงิน · ${funds.find((fund) => fund.id === topupFundId)?.label || ""}`}
-            onCancel={cancelTopup}
-            formId="fund-topup-form"
-            saving={busy}
-            saveDisabled={cashLoading || Boolean(loadError)}
-            saveLabel="บันทึก"
-          />
-        }
-      >
-        {topupFundId && (
-          <form id="fund-topup-form" onSubmit={(event) => {
-            event.preventDefault();
-            submitTopup(topupFundId);
-          }} onKeyDown={(event) => {
-            if (event.key === "Enter") event.preventDefault();
-          }} className="space-y-3">
-            <p className="rounded-lg border border-paperLine bg-paper p-3 text-sm">
-              สำหรับเงินที่เจ้าของจัดสรรมาใช้จ่าย ยอดงบเพิ่มทันที หากเป็นรายรับจากการดำเนินงานให้บันทึกรายรับแทน
-              เงินก้อนเดียวกันบันทึกเพียงครั้งเดียว
-            </p>
-            <label className="block text-sm">
-              วันที่เติมเงิน
-              <Input
-                id="fund-topup-date"
-                type="date"
-                max={bangkokDate()}
-                value={(topupDraft[topupFundId] || {}).date || ""}
-                onChange={(event) => setTopupDraft((items) => ({
-                  ...items,
-                  [topupFundId]: { ...(items[topupFundId] || {}), date: event.target.value },
-                }))}
-                className="mt-1"
-              />
-            </label>
-            <label className="block text-sm">
-              จำนวนเงิน (บาท)
-              <Input
-                id="fund-topup-amount"
-                type="number"
-                inputMode="decimal"
-                step="0.01"
-                value={(topupDraft[topupFundId] || {}).amount || ""}
-                onChange={(event) => setTopupDraft((items) => ({
-                  ...items,
-                  [topupFundId]: { ...(items[topupFundId] || {}), amount: event.target.value },
-                }))}
-                className="mt-1 w-full border border-paperLine rounded px-3 py-2"
-              />
-            </label>
-            <p className="text-xs text-inkSoft">วันที่เติมใช้ในแดชบอร์ดและรายงาน ส่วนการปิดยอดรายวันอ้างอิงเวลาที่บันทึกจริง</p>
-            <PossibleIncomeDuplicates entries={possibleIncomes} kind="income" />
-            <label className="block text-sm">
-              หมายเหตุ
-              <Input
-                value={(topupDraft[topupFundId] || {}).note || ""}
-                onChange={(event) => setTopupDraft((items) => ({
-                  ...items,
-                  [topupFundId]: { ...(items[topupFundId] || {}), note: event.target.value },
-                }))}
-                className="mt-1 w-full border border-paperLine rounded px-3 py-2"
-              />
-            </label>
-            {error && <p role="alert" className="text-sm text-danger">{error}</p>}
-          </form>
-        )}
-      </Sheet>
+      {topupFundId && <TopUpDialog lockedFundId={topupFundId}
+        onClose={() => setTopupFundId(null)} />}
       <VoidReasonSheet
         open={Boolean(voidTarget)}
         title={voidTarget?.kind === "fund" ? "ปิดใช้งานงบ" : "ยกเลิกเงินเติม"}

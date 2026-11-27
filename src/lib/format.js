@@ -1,3 +1,5 @@
+import { formatBusinessDate } from "./businessDate.js";
+
 export function formatBaht(n) {
   const num = Number(n || 0);
   return num.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -6,16 +8,16 @@ export function formatBaht(n) {
 export function formatDateTime(ts) {
   if (!ts) return "-";
   const d = ts.toDate ? ts.toDate() : new Date(ts);
-  return d.toLocaleString("th-TH", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
+  if (Number.isNaN(d.getTime())) return "-";
+  return `${formatDate(d)} ${d.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", hour12: false })}`;
 }
 
 export function formatDate(ts) {
   if (!ts) return "-";
+  if (typeof ts === "string" && /^\d{4}-\d{2}-\d{2}$/.test(ts)) return formatBusinessDate(ts);
   const d = ts.toDate ? ts.toDate() : new Date(ts);
-  return d.toLocaleDateString("th-TH", { dateStyle: "medium" });
+  if (Number.isNaN(d.getTime())) return "-";
+  return d.toLocaleDateString("th-TH-u-ca-buddhist-nu-latn", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
 export const STATUS_LABEL = {
@@ -35,3 +37,4 @@ export const PAYMENT_LABEL = {
   cash: "เงินสด",
   transfer: "โอนเงิน",
 };
+

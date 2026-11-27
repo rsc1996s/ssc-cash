@@ -16,9 +16,17 @@ export function parseBangkokDate(value) {
 }
 
 export function formatBangkokDate(value) {
+  if (!value) return "-";
   const date = value?.toDate ? value.toDate() : new Date(value);
-  return new Intl.DateTimeFormat("th-TH", {
+  if (Number.isNaN(date.getTime())) return "-";
+  return new Intl.DateTimeFormat("th-TH-u-ca-buddhist-nu-latn", {
     timeZone: "Asia/Bangkok",
-    dateStyle: "medium",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
   }).format(date);
+}
+
+export function formatBusinessDate(value) {
+  return formatBangkokDate(parseBangkokDate(value || ""));
 }

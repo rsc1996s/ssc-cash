@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { collection, doc, runTransaction, serverTimestamp } from "firebase/firestore";
-import { db } from "../firebase";
+import { serverTimestamp } from "firebase/firestore";
+import { commitTransaction, newTransactionRef } from "../lib/createIncomeTransfer";
 import { useAuth } from "../context/AuthContext";
 import Layout from "../components/Layout";
 import { fileToCompressedDataUrl, approxKb } from "../lib/image";
@@ -20,6 +20,7 @@ import useCategories from "../hooks/useCategories";
 import { isActiveFund } from "../lib/cashStatus";
 import { matchingTopups } from "../components/incomeDuplicates";
 import PossibleIncomeDuplicates from "../components/PossibleIncomeDuplicates";
+import TopUpDialog from "../components/TopUpDialog";
 
 const TOTAL_PHOTO_KB_WARNING = 700;
 
@@ -58,6 +59,7 @@ export default function NewTransaction() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [systemTime, setSystemTime] = useState(() => new Date());
+  const [topupOpen, setTopupOpen] = useState(false);
 
   useEffect(() => {
     const timer = window.setInterval(() => setSystemTime(new Date()), 1000);
@@ -90,17 +92,6 @@ export default function NewTransaction() {
       danger: true,
     })) return;
     navigate("/");
-  }
-
-  async function goToTopup() {
-    if (dirty && !await confirm({
-      title: "ไปเติมเงินเข้างบ",
-      description: "ข้อมูลรายการที่ยังไม่ได้บันทึกจะหายไป",
-      confirmLabel: "ทิ้งข้อมูลและไปต่อ",
-      cancelLabel: "ทำรายการต่อ",
-      danger: true,
-    })) return;
-    navigate("/admin/funds");
   }
 
   async function handleChangePhotoSelect(file) {
@@ -164,8 +155,7 @@ export default function NewTransaction() {
     try {
       const fundLabel = funds.find((f) => f.id === form.fundId)?.label || "";
 
-      const transactionRef = doc(collection(db, "transactions"));
-      const fundRef = doc(db, "funds", form.fundId);
+      const transactionRef = newTransactionRef();
       const transactionData = {
         fundId: form.fundId,
         fundLabel,
@@ -192,18 +182,7 @@ export default function NewTransaction() {
         reviewNote: null,
         editHistory: [],
       };
-      await runTransaction(db, async (batch) => {
-        const fundSnapshot = await batch.get(fundRef);
-        if (!fundSnapshot.exists() || fundSnapshot.data().archived === true) {
-          throw new Error("งบนี้ถูกปิดใช้งานแล้ว กรุณาเลือกงบอื่น");
-        }
-        batch.set(transactionRef, transactionData);
-        // The fund write makes creation contend with concurrent fund archival.
-        batch.update(fundRef, {
-          lastCreatedTransactionId: transactionRef.id,
-          transactionCreatedAt: serverTimestamp(),
-        });
-      });
+      await commitTransaction(transactionRef, form.fundId, transactionData);
 
       toast("บันทึกรายการแล้ว");
       navigate("/");
@@ -258,7 +237,7 @@ export default function NewTransaction() {
                 </button>
               ))}
               {profile?.role === "owner" && (
-                <button type="button" onClick={goToTopup}
+                <button type="button" onClick={() => setTopupOpen(true)}
                   className="col-span-2 min-h-11 rounded-xl border border-paperLine bg-white px-3 py-3 text-base font-semibold text-primary-dark sm:col-span-1">
                   เติมเงินเข้างบ
                 </button>
@@ -356,7 +335,7 @@ export default function NewTransaction() {
           </div>
 
           <div>
-            <label className="mb-2 block text-sm font-semibold">ฝั่งเงินหมุนเวียน</label>
+            <label className="mb-2 block text-sm font-semibold">งบที่ใช้บันทึกยอด</label>
             <SearchPicker
               id="transaction-fund-choice"
               value={form.fundId}
@@ -365,6 +344,7 @@ export default function NewTransaction() {
               placeholder="เลือกงบค่าใช้จ่าย"
               ariaLabel="งบค่าใช้จ่าย"
             />
+            <p className="mt-1 text-xs text-inkSoft">ยอดจะกระทบงบที่เลือก ส่วนช่องทางเงินระบุวิธีรับหรือจ่ายในรายละเอียดเพิ่มเติม โปรดตรวจให้ตรงกัน</p>
           </div>
 
           <PossibleIncomeDuplicates entries={possibleTopups} kind="topup" />
@@ -458,6 +438,8 @@ export default function NewTransaction() {
           {error && <p className="text-sm text-red-600" role="alert">{error}</p>}
 
         </form>
+        {profile?.role === "owner" && topupOpen && <TopUpDialog initialFundId={form.fundId}
+          onClose={() => setTopupOpen(false)} />}
       </Card>
     </Layout>
   );

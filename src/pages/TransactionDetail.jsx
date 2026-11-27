@@ -608,7 +608,7 @@ export default function TransactionDetail() {
               .map((h, i) => (
                 <li key={i} className="text-sm border-l-2 border-warning pl-3">
                   <div className="font-medium">
-                    {h.editedByName} · {new Date(h.editedAt).toLocaleString("th-TH")}
+                    {h.editedByName} · {formatDateTime(h.editedAt)}
                   </div>
                   <div className="text-inkSoft mb-1">เหตุผล: {h.reason}</div>
                   <ul className="text-xs text-inkSoft list-disc list-inside">

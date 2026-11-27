@@ -62,6 +62,7 @@ export default function StaffDashboard() {
   return (
     <Layout>
       <LowFundBalanceBanner />
+      <Link to="/receipts" className="mb-4 inline-flex min-h-11 items-center rounded-lg border border-paperLine bg-white px-4 text-sm font-semibold text-primary-dark">รับโอนจากลูกค้า</Link>
       {empty && <p className="mb-4 rounded-lg bg-warning-light p-3 text-sm text-warning">ยังไม่ได้รับมอบหมายงบ ติดต่อแอดมิน</p>}
 
       <div className="space-y-6">

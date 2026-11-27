@@ -12,7 +12,7 @@ import useScopedCashData from "../hooks/useScopedCashData";
 import Sheet from "../components/ui/Sheet";
 import Input from "../components/ui/Input";
 import { normalizeSearchText } from "../components/ui/searchText";
-import { formatBangkokDate } from "../lib/businessDate";
+import { formatBangkokDate, formatBusinessDate } from "../lib/businessDate";
 
 const ACTION_LABELS = {
   "transaction-status-changed": "เปลี่ยนสถานะรายการ",
@@ -61,7 +61,7 @@ function activityDescription(activity, funds, users) {
   if (action === "withdrawal-received-changed") return `ใบเบิก ${activity.targetId}: ${before?.receivedAmount == null ? "ยังไม่ระบุ" : formatBaht(before.receivedAmount)} → ${formatBaht(after?.receivedAmount)} บาท`;
   if (action === "transfer-payment-deleted") return `ใบโอน ${before?.transferNo || activity.targetId}`;
   if (typeof action === "string" && action.startsWith("daily-closing-")) {
-    return `${after?.businessDate || ""} · ส่วนต่าง ${Number(after?.difference) > 0 ? "+" : ""}${formatBaht(after?.difference)} บาท`;
+    return `${formatBusinessDate(after?.businessDate)} · ส่วนต่าง ${Number(after?.difference) > 0 ? "+" : ""}${formatBaht(after?.difference)} บาท`;
   }
   if (activity.targetCollection === "users") return `บัญชี ${activity.targetId}`;
   return `${activity.targetCollection}/${activity.targetId}`;
