@@ -1,0 +1,265 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --neutral-50: 248 250 252;
+  --neutral-100: 241 245 249;
+  --neutral-200: 226 232 240;
+  --neutral-300: 203 213 225;
+  --neutral-400: 148 163 184;
+  --neutral-500: 100 116 139;
+  --neutral-600: 71 85 105;
+  --neutral-700: 51 65 85;
+  --neutral-800: 30 41 59;
+  --neutral-900: 15 23 42;
+  --paper: 245 249 255;
+  --surface: 255 255 255;
+  --line: 215 227 243;
+  --ink: 23 43 77;
+  --ink-soft: 83 101 122;
+  --primary: 37 99 235;
+  --primary-dark: 29 78 216;
+  --primary-light: 239 246 255;
+  --warning: 133 77 14;
+  --warning-light: 254 243 199;
+  --danger: 185 28 28;
+  --danger-light: 254 242 242;
+  --income: 21 128 61;
+  --expense: 185 28 28;
+  --success: var(--income);
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --radius-control: 8px;
+  --radius-card: 16px;
+  --shadow-card: 0 1px 3px rgb(23 43 77 / 8%);
+  --shadow-overlay: 0 12px 32px rgb(23 43 77 / 16%);
+  --glass: 255 255 255;
+  --glow: 34 211 238;
+}
+
+.aurora-background {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 42rem 28rem at 5% 0%, rgb(37 99 235 / 9%), transparent 70%),
+    radial-gradient(ellipse 38rem 26rem at 100% 0%, rgb(34 211 238 / 8%), transparent 70%);
+}
+
+.aurora-sidebar,
+.aurora-auth-card {
+  background: rgb(255 255 255 / 90%);
+  box-shadow: 0 12px 40px rgb(23 43 77 / 10%);
+}
+
+@supports (backdrop-filter: blur(16px)) or (-webkit-backdrop-filter: blur(16px)) {
+  .aurora-sidebar,
+  .aurora-auth-card {
+    background: rgb(255 255 255 / 80%);
+    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px);
+  }
+}
+
+.aurora-hero {
+  background:
+    radial-gradient(ellipse at 85% 10%, rgb(14 165 233 / 32%), transparent 55%),
+    radial-gradient(ellipse at 15% 100%, rgb(37 99 235 / 35%), transparent 60%),
+    linear-gradient(135deg, #0b1b3a, #0f2a5c);
+}
+
+.aurora-auth {
+  background:
+    radial-gradient(ellipse at 10% 10%, rgb(37 99 235 / 14%), transparent 55%),
+    radial-gradient(ellipse at 90% 5%, rgb(34 211 238 / 10%), transparent 50%),
+    rgb(var(--paper));
+}
+
+body {
+  min-width: 320px;
+  background: rgb(var(--paper));
+  color: rgb(var(--ink));
+  font-family: "Noto Sans Thai", system-ui, sans-serif;
+  font-size: 1rem;
+  -webkit-font-smoothing: antialiased;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+.page-transition {
+  min-height: 100vh;
+  animation: slide-page-in 250ms ease-out both;
+  will-change: transform;
+}
+
+.page-transition-back {
+  animation-name: slide-page-in-from-left;
+}
+
+@keyframes slide-page-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes slide-page-in-from-left {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+.font-nums {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+* {
+  font-family: inherit;
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+select,
+textarea {
+  min-height: 44px;
+  border-color: rgb(var(--line));
+  border-radius: var(--radius-control);
+  background-color: rgb(var(--surface));
+  color: rgb(var(--ink));
+  font-size: 1rem;
+  line-height: 1.5rem;
+}
+
+textarea {
+  min-height: 5.5rem;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: rgb(var(--ink-soft));
+  opacity: 1;
+}
+
+button {
+  min-height: 44px;
+}
+
+.text-sm {
+  font-size: 0.9375rem;
+}
+
+.text-xs,
+.text-\[10px\],
+.text-\[10\.5px\],
+.text-\[11px\] {
+  font-size: 0.75rem;
+  line-height: 1.25rem;
+}
+
+/* Focus visibility */
+:focus-visible {
+  outline: 3px solid rgb(var(--primary-dark));
+  outline-offset: 2px;
+}
+
+@page {
+  size: A4 portrait;
+  margin: 12mm;
+  @bottom-right {
+    content: "หน้า " counter(page) " / " counter(pages);
+    color: #53657A;
+    font-family: "Noto Sans Thai", system-ui, sans-serif;
+    font-size: 9pt;
+  }
+}
+
+@media print {
+  .aurora-background {
+    display: none !important;
+  }
+  .aurora-hero {
+    background: white !important;
+    color: black !important;
+  }
+  *,
+  *::before,
+  *::after {
+    print-color-adjust: exact !important;
+    -webkit-print-color-adjust: exact !important;
+  }
+  html,
+  body,
+  #root {
+    min-width: 0 !important;
+    min-height: 0 !important;
+    background: white !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: white !important;
+  }
+  .print-document {
+    width: auto !important;
+    max-width: none !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  .print-sheet {
+    box-shadow: none !important;
+    border: none !important;
+  }
+  .withdrawal-report-table {
+    border-collapse: collapse;
+    page-break-inside: auto;
+  }
+  .withdrawal-report-table thead {
+    display: table-header-group;
+  }
+  .withdrawal-report-table tr,
+  .print-row {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .print-signatures,
+  .print-metadata {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .aurora-sidebar,
+  .aurora-auth-card {
+    background: white;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+
+  .page-transition {
+    animation: none !important;
+    will-change: auto;
+  }
+}
+
+@media (max-width: 1023px) {
+  body {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
