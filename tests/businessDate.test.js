@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { bangkokDate, formatBangkokDate, parseBangkokDate } from "../src/lib/businessDate.js";
+import { bangkokDate, formatBangkokDate, formatBusinessDate, parseBangkokDate } from "../src/lib/businessDate.js";
+import { formatDate, formatDateTime } from "../src/lib/format.js";
 import { buildFundLedger, currentFundBalance } from "../src/lib/ledger.js";
 
 test("top-up dates use the Bangkok calendar and reject invalid dates", () => {
@@ -9,7 +10,13 @@ test("top-up dates use the Bangkok calendar and reject invalid dates", () => {
   assert.equal(parseBangkokDate("2024-02-29").toISOString(), "2024-02-28T17:00:00.000Z");
   assert.equal(parseBangkokDate("2025-02-29"), null);
   assert.equal(parseBangkokDate("2026-2-01"), null);
-  assert.equal(formatBangkokDate(parseBangkokDate("2026-01-02")), "2 ม.ค. 2569");
+  assert.equal(formatBangkokDate(parseBangkokDate("2026-01-02")), "02/01/2569");
+  assert.equal(formatBusinessDate("2026-01-02"), "02/01/2569");
+  assert.equal(formatBusinessDate("invalid"), "-");
+  assert.equal(formatBangkokDate(null), "-");
+  assert.equal(formatDate(new Date(2026, 0, 2, 14, 5)), "02/01/2569");
+  assert.equal(formatDate("2026-01-02"), "02/01/2569");
+  assert.equal(formatDateTime(new Date(2026, 0, 2, 14, 5)), "02/01/2569 14:05");
 });
 
 test("a descriptive top-up date does not change the ledger or balance", () => {

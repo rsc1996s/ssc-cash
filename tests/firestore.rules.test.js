@@ -670,6 +670,40 @@ describe("Firestore rules", { concurrency: false }, () => {
       createdAt: serverTimestamp(),
     });
 
+    test("owner approves five transfers with separate audit and activity records in one batch", async () => {
+      const firestore = testEnv.authenticatedContext("owner-a").firestore();
+      const ids = Array.from({ length: 5 }, (_, index) => `batch-receipt-${index}`);
+      for (const id of ids) await seedTransaction(id, { type: "income", paymentMethod: "transfer", receiptPhotoURL: null, receiptPhotoURLs: [] });
+      const batch = firestore.batch();
+      for (const id of ids) {
+        const audit = firestore.collection("auditLogs").doc();
+        const entry = {
+          actorUid: "owner-a", actorName: "เจ้าของ", action: "transaction-status-changed",
+          targetCollection: "transactions", targetId: id, before: { status: "pending" },
+          after: { status: "approved" }, createdAt: serverTimestamp(),
+        };
+        batch.update(firestore.doc(`transactions/${id}`), {
+          status: "approved", reviewedBy: "owner-a", reviewedByName: "เจ้าของ",
+          reviewedAt: serverTimestamp(), reviewNote: null,
+          approvalSignatureURL: "data:image/png;base64,AAAA", updatedAt: serverTimestamp(), auditLogId: audit.id,
+        });
+        batch.set(audit, entry);
+        batch.set(firestore.doc(`activityLogs/${audit.id}`), entry);
+      }
+      await assertSucceeds(batch.commit());
+      for (const id of ids) assert.equal((await firestore.doc(`transactions/${id}`).get()).data().status, "approved");
+    });
+
+    test("staff can reconcile its own receipt id and cannot create it twice", async () => {
+      const firestore = testEnv.authenticatedContext("staff-a").firestore();
+      const data = { type: "income", paymentMethod: "transfer", receiptPhotoURL: null, receiptPhotoURLs: [] };
+      await assertSucceeds(createTransaction(firestore, "receipt-retry", data));
+      const own = await assertSucceeds(firestore.collection("transactions")
+        .where("fundId", "==", "fund-a").where("createdBy", "==", "staff-a").get());
+      assert.ok(own.docs.some((entry) => entry.id === "receipt-retry"));
+      await assertFails(createTransaction(firestore, "receipt-retry", data));
+    });
+
     await assertSucceeds(batch.commit());
     await assertSucceeds(firestore.doc(`activityLogs/${audit.id}`).get());
     await assertFails(testEnv.authenticatedContext("staff-a").firestore()
