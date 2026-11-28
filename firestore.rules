@@ -515,7 +515,7 @@ service cloud.firestore {
           (request.resource.data.ownerCount == resource.data.ownerCount &&
             (
               !request.resource.data.diff(resource.data).affectedKeys().hasAny(['loginMode']) ||
-              (resource.data.loginMode != 'username' &&
+              (resource.data.get('loginMode', 'pin') != 'username' &&
                 request.resource.data.loginMode == 'username' &&
                 request.resource.data.loginModeUpdatedAt == request.time)
             ))
